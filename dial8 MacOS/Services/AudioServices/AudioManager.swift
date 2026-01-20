@@ -77,6 +77,7 @@ class AudioManager: ObservableObject {
     private let audioHealthService = AudioHealthService()
     private let audioNotificationService = AudioNotificationService()
     private let audioCleanupService: AudioCleanupService
+    private let audioDuckingService = AudioDuckingService()
     
     // Extracted services
     private let audioSegmentationService: AudioSegmentationService
@@ -369,6 +370,9 @@ class AudioManager: ObservableObject {
             guard let self = self else { return }
             if granted {
                 DispatchQueue.main.async {
+                    // Duck audio immediately when recording is approved to start
+                    self.audioDuckingService.duck()
+                    
                     // Setup the audio engine with a completion handler
                     self.setupAudioEngineForRecording()
                 }
@@ -423,6 +427,9 @@ class AudioManager: ObservableObject {
     private func completeRecordingStop() {
         // Stop audio level monitoring first to prevent spikes
         AudioLevelMonitor.shared.stopMonitoring()
+        
+        // Ensure audio is unducked
+        audioDuckingService.unduck()
         
         // Update UI state and hide HUD
         DispatchQueue.main.async {
@@ -479,6 +486,9 @@ class AudioManager: ObservableObject {
         guard isRecording else { return }
         
         print("⏹️ Stopping recording and discarding audio...")
+        
+        // Ensure audio is unducked
+        audioDuckingService.unduck()
         
         // Set the stopping flag immediately to prevent new speech detection events
         self.isStoppingRecording = true

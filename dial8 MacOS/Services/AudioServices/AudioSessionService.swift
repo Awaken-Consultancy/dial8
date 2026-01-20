@@ -126,4 +126,191 @@ class AudioSessionService {
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
-} 
+}
+
+class AudioDuckingService {
+    // MARK: - Properties
+    
+    private var originalVolume: Float32?
+    private var isDucked = false
+    private let duckingFactor: Float32 = 0.1 // Duck to 10% of original volume
+    
+    // Safety tracking for volume lag
+    private var expectedRestoredVolume: Float32?
+    private var lastUnduckTime: Date?
+    
+    // MARK: - Public Methods
+    
+    func duck() {
+        guard !isDucked else { return }
+        
+        // Get current system volume
+        guard var currentVolume = getSystemVolume() else {
+            print("⚠️ AudioDuckingService: Failed to get current system volume")
+            return
+        }
+        
+        // Check for volume lag (if we unducked recently but system volume hasn't updated yet)
+        if let expected = expectedRestoredVolume,
+           let lastTime = lastUnduckTime,
+           Date().timeIntervalSince(lastTime) < 1.0 {
+            
+            // If current volume is close to what it would be if ducked (expected * duckingFactor)
+            // and significantly different from what we expect (restored volume)
+            // then assume the system hasn't updated yet and use the expected volume
+            let previousDuckedLevel = expected * duckingFactor
+            
+            if abs(currentVolume - previousDuckedLevel) < 0.1 && abs(currentVolume - expected) > 0.1 {
+                print("⚠️ AudioDuckingService: Detected volume lag. Using expected volume \(expected) instead of current \(currentVolume)")
+                currentVolume = expected
+            }
+        }
+        
+        // Store original volume
+        originalVolume = currentVolume
+        
+        // Calculate ducked volume
+        let duckedVolume = currentVolume * duckingFactor
+        
+        // Apply ducked volume
+        if setSystemVolume(duckedVolume) {
+            isDucked = true
+            print("🔉 AudioDuckingService: Ducked volume to \(duckedVolume) (Original: \(currentVolume))")
+        } else {
+            print("⚠️ AudioDuckingService: Failed to set ducked volume")
+        }
+    }
+    
+    func unduck() {
+        guard isDucked, let originalVol = originalVolume else { return }
+        
+        // Restore original volume
+        if setSystemVolume(originalVol) {
+            print("🔊 AudioDuckingService: Restored volume to \(originalVol)")
+            isDucked = false
+            originalVolume = nil
+            
+            // Track expectation for safety
+            expectedRestoredVolume = originalVol
+            lastUnduckTime = Date()
+        } else {
+            print("⚠️ AudioDuckingService: Failed to restore volume")
+        }
+    }
+    
+    // MARK: - Private Methods
+    
+    private func getSystemVolume() -> Float32? {
+        var deviceID = AudioDeviceID(0)
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        
+        // Get default output device
+        var status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+        
+        guard status == noErr else { return nil }
+        
+        // Get volume
+        // Try VirtualMainVolume first
+        propertyAddress.mSelector = kAudioHardwareServiceDeviceProperty_VirtualMainVolume
+        propertyAddress.mScope = kAudioObjectPropertyScopeOutput
+        propertyAddress.mElement = kAudioObjectPropertyElementMain
+        
+        if !hasProperty(deviceID: deviceID, address: propertyAddress) {
+            // Fallback to VolumeScalar
+            propertyAddress.mSelector = kAudioDevicePropertyVolumeScalar
+        }
+        
+        var volume: Float32 = 0.0
+        dataSize = UInt32(MemoryLayout<Float32>.size)
+        
+        status = AudioObjectGetPropertyData(
+            deviceID,
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &volume
+        )
+        
+        return status == noErr ? volume : nil
+    }
+    
+    private func setSystemVolume(_ volume: Float32) -> Bool {
+        var deviceID = AudioDeviceID(0)
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        
+        // Get default output device
+        var status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+        
+        guard status == noErr else { return false }
+        
+        // Set volume
+        propertyAddress.mSelector = kAudioHardwareServiceDeviceProperty_VirtualMainVolume
+        propertyAddress.mScope = kAudioObjectPropertyScopeOutput
+        propertyAddress.mElement = kAudioObjectPropertyElementMain
+        
+        // Try VirtualMainVolume first
+        if hasProperty(deviceID: deviceID, address: propertyAddress) {
+            // VirtualMainVolume is settable
+        } else {
+            // Fallback to VolumeScalar
+            propertyAddress.mSelector = kAudioDevicePropertyVolumeScalar
+        }
+        
+        // Check if property is settable
+        var isSettable: DarwinBoolean = false
+        status = AudioObjectIsPropertySettable(deviceID, &propertyAddress, &isSettable)
+        
+        guard status == noErr && isSettable.boolValue else {
+            print("⚠️ AudioDuckingService: Volume property is not settable")
+            return false
+        }
+        
+        var newVolume = volume
+        // Clamp volume between 0.0 and 1.0
+        newVolume = max(0.0, min(1.0, newVolume))
+        
+        dataSize = UInt32(MemoryLayout<Float32>.size)
+        
+        status = AudioObjectSetPropertyData(
+            deviceID,
+            &propertyAddress,
+            0,
+            nil,
+            dataSize,
+            &newVolume
+        )
+        
+        return status == noErr
+    }
+    
+    private func hasProperty(deviceID: AudioDeviceID, address: AudioObjectPropertyAddress) -> Bool {
+        var mutableAddress = address
+        return AudioObjectHasProperty(deviceID, &mutableAddress)
+    }
+}
+

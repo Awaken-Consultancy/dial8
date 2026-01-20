@@ -36,7 +36,7 @@ class GlobalHotkeyManager: ObservableObject {
 
     // Tap vs Hold detection
     private var keyPressStartTime: Date?
-    private let tapThreshold: TimeInterval = 0.25  // 250ms threshold - quick release = tap (toggle mode)
+    private let tapThreshold: TimeInterval = 0.45  // 450ms threshold - quick release = tap (toggle mode)
     private var isToggleMode = false  // true = recording continues after key release (tap mode active)
 
     // Add the eventTapCallback property
