@@ -11,6 +11,13 @@ class HotkeyManager: ObservableObject {
         }
     }
     
+    @Published var triggerMode: TriggerMode = .hybrid {
+        didSet {
+            UserDefaults.standard.set(triggerMode.rawValue, forKey: "triggerMode")
+            print("🔄 Trigger mode updated: \(triggerMode.description)")
+        }
+    }
+    
     @Published var isRecordingHotkey = false
     @Published var currentLearningConfig: HotkeyConfiguration?
     
@@ -20,6 +27,12 @@ class HotkeyManager: ObservableObject {
     }
     
     private func loadSavedConfigurations() {
+        // Load trigger mode
+        if let savedModeString = UserDefaults.standard.string(forKey: "triggerMode"),
+           let savedMode = TriggerMode(rawValue: savedModeString) {
+            self.triggerMode = savedMode
+        }
+        
         // Force reset to new defaults by checking against a version number
         let currentConfigVersion = 7 // Increment this when you want to force new defaults
         let savedConfigVersion = UserDefaults.standard.integer(forKey: "hotkeyConfigurationsVersion")

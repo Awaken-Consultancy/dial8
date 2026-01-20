@@ -59,6 +59,26 @@ struct HotKeysView: View {
                         }
                         .padding(.leading, 44) // Align with text above
                     }
+                    
+                    // Trigger Mode Picker
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.tap")
+                            .font(.system(size: 12))
+                            .foregroundColor(.orange)
+
+                        Text("Activation Mode:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Picker("", selection: $hotkeyManager.triggerMode) {
+                            ForEach(TriggerMode.allCases) { mode in
+                                Text(mode.description).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                    .padding(.leading, 44)
 
                     // Space bar lock instruction
                     HStack(spacing: 8) {
@@ -83,12 +103,37 @@ struct HotKeysView: View {
                     .fontWeight(.medium)
                     .foregroundColor(.primary)
                 
-                HStack(spacing: 4) {
-                    Text("•")
-                        .foregroundColor(.secondary)
-                    Text("Hold hotkey to record, release to stop")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                if hotkeyManager.triggerMode == .hybrid {
+                    HStack(spacing: 4) {
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        Text("Quick Tap: Toggle recording (Start/Stop)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 4) {
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        Text("Hold & Release: Push to Talk")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if hotkeyManager.triggerMode == .pushToTalk {
+                    HStack(spacing: 4) {
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        Text("Hold hotkey to record, release to stop")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else { // Toggle
+                    HStack(spacing: 4) {
+                        Text("•")
+                            .foregroundColor(.secondary)
+                        Text("Press hotkey to start, press again to stop")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 
                 HStack(spacing: 4) {

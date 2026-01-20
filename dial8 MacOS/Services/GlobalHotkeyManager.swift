@@ -271,17 +271,34 @@ class GlobalHotkeyManager: ObservableObject {
                             pushToTalkKeyCombo = nil
                         } else if !isHotkeyPressed {
                             // First press - start recording and track time for tap detection
+                            let triggerMode = hotkeyManager.triggerMode
+                            
+                            // For Strict Toggle, we toggle state immediately
+                            if triggerMode == .toggle {
+                                if isRecording {
+                                    print("🎙️ Toggle Mode: Stopping recording")
+                                    stopRecordingAndSendAudio()
+                                } else {
+                                    print("🎙️ Toggle Mode: Starting recording")
+                                    recordingMode = .transcriptionOnly
+                                    audioManager.setRecordingMode(recordingMode)
+                                    audioManager.startRecording()
+                                    isToggleMode = true
+                                }
+                            } else {
+                                // For Hybrid or Push-to-Talk, always start recording (assume PTT first)
+                                if !isRecording {
+                                    print("🎙️ Push-to-talk/Hybrid: Key pressed, starting recording")
+                                    recordingMode = .transcriptionOnly
+                                    audioManager.setRecordingMode(recordingMode)
+                                    audioManager.startRecording()
+                                }
+                                isToggleMode = false
+                            }
+                            
                             isHotkeyPressed = true
                             keyPressStartTime = Date()
-                            isToggleMode = false
                             pushToTalkKeyCombo = KeyCombo(keyCode: -1, modifiers: flags.rawValue)
-
-                            if !isRecording {
-                                print("🎙️ Push-to-talk: Key pressed, starting recording")
-                                recordingMode = .transcriptionOnly
-                                audioManager.setRecordingMode(recordingMode)
-                                audioManager.startRecording()
-                            }
                         }
                         directlyHandledKey = true
                         previousFlags = flags
@@ -311,17 +328,26 @@ class GlobalHotkeyManager: ObservableObject {
                         if !currentHasAllModifiers {
                             // Key was released
                             isHotkeyPressed = false
+                            
+                            let triggerMode = hotkeyManager.triggerMode
+
+                            // STRICT TOGGLE: Ignore release events
+                            if triggerMode == .toggle {
+                                pushToTalkKeyCombo = nil
+                                return Unmanaged.passRetained(event)
+                            }
 
                             // Calculate press duration to detect tap vs hold
                             let pressDuration = Date().timeIntervalSince(keyPressStartTime ?? Date())
 
-                            if pressDuration < tapThreshold {
+                            // HYBRID MODE CHECK
+                            if triggerMode == .hybrid && pressDuration < tapThreshold {
                                 // TAP detected - enter toggle mode, keep recording
                                 isToggleMode = true
                                 print("🎙️ Tap detected (\(String(format: "%.0f", pressDuration * 1000))ms) - toggle mode active")
                                 // Don't stop recording - user will tap again to stop
                             } else if isRecording && !isRecordingLocked && !isToggleMode {
-                                // HOLD detected - stop recording (push-to-talk behavior)
+                                // HOLD detected OR STRICT PTT - stop recording (push-to-talk behavior)
                                 print("🎙️ Hold released (\(String(format: "%.0f", pressDuration * 1000))ms) - stopping recording")
                                 stopRecordingAndSendAudio()
                                 pushToTalkKeyCombo = nil

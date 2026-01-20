@@ -127,6 +127,22 @@ enum OptionKeyPreference: String, Codable {
     static let rightOptionMask: UInt64 = 0x00000040  // NX_DEVICERALTKEYMASK
 }
 
+enum TriggerMode: String, CaseIterable, Identifiable, Codable {
+    case hybrid
+    case pushToTalk
+    case toggle
+
+    var id: String { self.rawValue }
+    
+    var description: String {
+        switch self {
+        case .hybrid: return "Smart (Tap to Toggle, Hold to Speak)"
+        case .pushToTalk: return "Push to Talk (Hold Only)"
+        case .toggle: return "Toggle (Press to Start/Stop)"
+        }
+    }
+}
+
 enum KeyCodeMap {
     static func description(for keyCode: Int) -> String {
         switch keyCode {
