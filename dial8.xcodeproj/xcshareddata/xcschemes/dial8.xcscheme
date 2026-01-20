@@ -70,21 +70,30 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
+            BlueprintIdentifier = "2369467E2CB1F357002E8CBD"
+            BuildableName = "Dial8.app"
+            BlueprintName = "dial8 MacOS"
+            ReferencedContainer = "container:dial8.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
             BlueprintIdentifier = "23C7615B2C92231C0094B283"
             BuildableName = "dial8.app"
             BlueprintName = "dial8"
             ReferencedContainer = "container:dial8.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
       <AdditionalOptions>
-         <AdditionalOption
-            key = "NSZombieEnabled"
-            value = "YES"
-            isEnabled = "YES">
-         </AdditionalOption>
          <AdditionalOption
             key = "MallocScribble"
             value = ""
+            isEnabled = "YES">
+         </AdditionalOption>
+         <AdditionalOption
+            key = "NSZombieEnabled"
+            value = "YES"
             isEnabled = "YES">
          </AdditionalOption>
       </AdditionalOptions>
@@ -105,6 +114,15 @@
             ReferencedContainer = "container:dial8.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "23C7615B2C92231C0094B283"
+            BuildableName = "dial8.app"
+            BlueprintName = "dial8"
+            ReferencedContainer = "container:dial8.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
       buildConfiguration = "Debug">

@@ -97,16 +97,33 @@ struct WhisperTranscriptionSegment {
     }
 }
 
-class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
+@MainActor
+class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, SpeechRecognitionEngine {
     static let shared = WhisperManager()
 
-    // Published properties for UI updates
+    // MARK: - SpeechRecognitionEngine Protocol Properties
+
+    let engineName = "Whisper"
+
+    let supportedLanguages = [
+        "auto", "english", "chinese", "german", "spanish", "russian", "korean",
+        "french", "japanese", "portuguese", "turkish", "polish", "catalan",
+        "dutch", "arabic", "swedish", "italian", "indonesian", "hindi"
+    ]
+
+    var selectedModelId: String {
+        get { selectedModelSize }
+        set { selectedModelSize = newValue }
+    }
+
+    // MARK: - Published Properties
+
     @Published var isDownloading = false
     @Published var downloadProgress: Double = 0.0
     @Published var isReady = false
     @Published var errorMessage: String?
     @Published var availableModels: [WhisperModelInfo] = []
-    @Published var selectedModelSize: String = "Small"  // Changed from "Base" to "Small"
+    @Published var selectedModelSize: String = "Small"
 
     // Process management
     private var processQueue = DispatchQueue(label: "com.dial8.whisper.process", qos: .userInitiated)
@@ -150,7 +167,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         "largev3turbo": ModelDisplayInfo(
             id: "largev3turbo",
             displayName: "Large V3 Turbo",
-            icon: "bolt.star.circle",
+            icon: "bolt.circle.fill",
             description: "Optimized large model with faster processing while maintaining high accuracy.",
             recommendation: "Best balance of speed and accuracy"
         )
@@ -169,7 +186,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
     }
 
     // Get or create the directory for storing Whisper models
-    private func getModelDirectory() -> URL {
+    private nonisolated func getModelDirectory() -> URL {
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let modelDirectory = applicationSupport.appendingPathComponent("Whisper")
         if !FileManager.default.fileExists(atPath: modelDirectory.path) {
@@ -300,7 +317,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 selectedModelSize = ""
                 isReady = false
                 UserDefaults.standard.setValue(selectedModelSize, forKey: "SelectedWhisperModel")
-                
+
                 // Clear preloaded model state
                 preloadedModel = nil
                 preloadedModelSize = nil
@@ -311,6 +328,28 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
                 self.errorMessage = "Failed to delete model: \(error.localizedDescription)"
             }
         }
+    }
+
+    // MARK: - SpeechRecognitionEngine Protocol Methods
+
+    /// Protocol-conforming wrapper for downloadModel
+    func downloadModel(modelId: String) {
+        downloadModel(modelSize: modelId)
+    }
+
+    /// Protocol-conforming wrapper for selectModel
+    func selectModel(modelId: String) {
+        selectModel(modelSize: modelId)
+    }
+
+    /// Protocol-conforming wrapper for deleteModel
+    func deleteModel(modelId: String) {
+        deleteModel(modelSize: modelId)
+    }
+
+    /// Protocol-conforming transcription method
+    func transcribe(audioURL: URL, language: String?, completion: @escaping (Result<String, Error>) -> Void) {
+        transcribe(audioURL: audioURL, mode: .transcriptionOnly, targetLanguage: language, completion: completion)
     }
 
     private func preloadSelectedModel() {
@@ -809,7 +848,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
 
     // MARK: - URLSessionDownloadDelegate Methods
 
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         do {
             let fileManager = FileManager.default
 
@@ -845,7 +884,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
             DispatchQueue.main.async {
                 self.errorMessage = error.localizedDescription
@@ -854,7 +893,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
         }
     }
 
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64,
                     totalBytesExpectedToWrite: Int64) {
@@ -866,7 +905,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate {
 
     // Helper functions to get URLs and file names...
 
-    private func getFileName(for url: URL?) -> String {
+    private nonisolated func getFileName(for url: URL?) -> String {
         return url?.lastPathComponent ?? "downloaded_file"
     }
 

@@ -34,6 +34,10 @@ class GlobalHotkeyManager: ObservableObject {
     private var pushToTalkKeyCombo: KeyCombo?
     private var isRecordingLocked = false  // When space is pressed, recording continues without holding Option
 
+    // Tap vs Hold detection
+    private var keyPressStartTime: Date?
+    private let tapThreshold: TimeInterval = 0.25  // 250ms threshold - quick release = tap (toggle mode)
+    private var isToggleMode = false  // true = recording continues after key release (tap mode active)
 
     // Add the eventTapCallback property
     private let eventTapCallback: CGEventTapCallBack = { proxy, type, event, userInfo in
@@ -246,13 +250,19 @@ class GlobalHotkeyManager: ObservableObject {
                 // Check for matching hotkey and ensure it's enabled
                 // We also allow checking even when no new flags are pressed if we're in hidden state
                 // This helps recover from scenarios where key release events were missed
-                if let config = hotkeyManager.findConfigurationForKeyCombo(modifiers: flags.rawValue, keyCode: -1),
+                if let config = hotkeyManager.findConfigurationForKeyCombo(modifiers: flags.rawValue, keyCode: -1, rawFlags: flags.rawValue),
                    config.isEnabled {
                     
                     // Handle based on action type
                     if config.action == .pushToTalk {
-                        // Check if we're in a locked recording session
-                        if isRecording && isRecordingLocked {
+                        // Check if we're already recording in toggle mode (second tap to stop)
+                        if isRecording && isToggleMode {
+                            print("🎙️ Toggle Mode: Second tap, stopping recording")
+                            stopRecordingAndSendAudio()
+                            isToggleMode = false
+                            isHotkeyPressed = false
+                            pushToTalkKeyCombo = nil
+                        } else if isRecording && isRecordingLocked {
                             // Option pressed while locked - stop recording
                             print("🛑 Push-to-talk: Option pressed while locked, stopping recording")
                             stopRecordingAndSendAudio()
@@ -260,10 +270,12 @@ class GlobalHotkeyManager: ObservableObject {
                             isHotkeyPressed = false
                             pushToTalkKeyCombo = nil
                         } else if !isHotkeyPressed {
-                            // Normal push-to-talk start
+                            // First press - start recording and track time for tap detection
                             isHotkeyPressed = true
+                            keyPressStartTime = Date()
+                            isToggleMode = false
                             pushToTalkKeyCombo = KeyCombo(keyCode: -1, modifiers: flags.rawValue)
-                            
+
                             if !isRecording {
                                 print("🎙️ Push-to-talk: Key pressed, starting recording")
                                 recordingMode = .transcriptionOnly
@@ -299,10 +311,18 @@ class GlobalHotkeyManager: ObservableObject {
                         if !currentHasAllModifiers {
                             // Key was released
                             isHotkeyPressed = false
-                            
-                            if isRecording && !isRecordingLocked {
-                                // Only stop if recording is not locked
-                                print("🎙️ Push-to-talk: Option released, stopping recording")
+
+                            // Calculate press duration to detect tap vs hold
+                            let pressDuration = Date().timeIntervalSince(keyPressStartTime ?? Date())
+
+                            if pressDuration < tapThreshold {
+                                // TAP detected - enter toggle mode, keep recording
+                                isToggleMode = true
+                                print("🎙️ Tap detected (\(String(format: "%.0f", pressDuration * 1000))ms) - toggle mode active")
+                                // Don't stop recording - user will tap again to stop
+                            } else if isRecording && !isRecordingLocked && !isToggleMode {
+                                // HOLD detected - stop recording (push-to-talk behavior)
+                                print("🎙️ Hold released (\(String(format: "%.0f", pressDuration * 1000))ms) - stopping recording")
                                 stopRecordingAndSendAudio()
                                 pushToTalkKeyCombo = nil
                             } else if isRecording && isRecordingLocked {
@@ -409,7 +429,7 @@ class GlobalHotkeyManager: ObservableObject {
         
         // Regular hotkey handling for key press events
         if type == .keyDown {
-            if let config = hotkeyManager.findConfigurationForKeyCombo(modifiers: flags.rawValue, keyCode: keyCode),
+            if let config = hotkeyManager.findConfigurationForKeyCombo(modifiers: flags.rawValue, keyCode: keyCode, rawFlags: flags.rawValue),
                config.isEnabled {
                 
                 // Handle based on action type
@@ -546,7 +566,10 @@ class GlobalHotkeyManager: ObservableObject {
             isRecordingLocked = false
             NotificationCenter.default.post(name: Notification.Name("RecordingLockedStateChanged"), object: nil, userInfo: ["isLocked": false])
         }
-        
+
+        // Reset toggle mode
+        isToggleMode = false
+
         // Update hudState if we're in transcription mode
         if hudState == .showingTranscription {
             print("🎙️ Updating HUD state after stopping transcription")

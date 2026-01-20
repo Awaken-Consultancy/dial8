@@ -27,50 +27,62 @@ struct KeyCombo: Codable, Equatable {
     var keyCode: Int
     var modifiers: UInt64
     var additionalKeyCodes: [Int] = []
-    
+    var optionKeyPreference: OptionKeyPreference = .any
+
     var hasCommand: Bool { modifiers & CGEventFlags.maskCommand.rawValue != 0 }
     var hasShift: Bool { modifiers & CGEventFlags.maskShift.rawValue != 0 }
     var hasControl: Bool { modifiers & CGEventFlags.maskControl.rawValue != 0 }
     var hasOption: Bool { modifiers & CGEventFlags.maskAlternate.rawValue != 0 }
     var hasFn: Bool { modifiers & CGEventFlags.maskSecondaryFn.rawValue != 0 }
-    
+
     var isValid: Bool {
         let modifierCount = [hasCommand, hasShift, hasControl, hasOption, hasFn].filter { $0 }.count
         let keyCount = (keyCode != -1 ? 1 : 0) + additionalKeyCodes.count
         let totalCount = modifierCount + keyCount
-        
+
         return totalCount > 0 && totalCount <= 4
     }
-    
+
     var description: String {
         if keyCode == -1 && modifiers == 0 && additionalKeyCodes.isEmpty {
             return "Unassigned"
         }
-        
+
         var components: [String] = []
-        
+
         if hasCommand { components.append("⌘") }
         if hasShift { components.append("⇧") }
         if hasControl { components.append("⌃") }
-        if hasOption { components.append("⌥") }
+        if hasOption {
+            switch optionKeyPreference {
+            case .any:
+                components.append("⌥")
+            case .leftOnly:
+                components.append("Left ⌥")
+            case .rightOnly:
+                components.append("Right ⌥")
+            }
+        }
         if hasFn { components.append("Fn") }
-        
+
         if keyCode != -1 {
             components.append(KeyCodeMap.description(for: keyCode))
         }
-        
+
         for code in additionalKeyCodes {
             components.append(KeyCodeMap.description(for: code))
         }
-        
+
         return components.joined(separator: " + ")
     }
 }
 
 extension KeyCombo {
     static func == (lhs: KeyCombo, rhs: KeyCombo) -> Bool {
-        let equal = lhs.keyCode == rhs.keyCode && lhs.modifiers == rhs.modifiers && lhs.additionalKeyCodes == rhs.additionalKeyCodes
-        // print("🔍 Comparing KeyCombos: \(lhs.description) == \(rhs.description) : \(equal)")
+        let equal = lhs.keyCode == rhs.keyCode &&
+                    lhs.modifiers == rhs.modifiers &&
+                    lhs.additionalKeyCodes == rhs.additionalKeyCodes &&
+                    lhs.optionKeyPreference == rhs.optionKeyPreference
         return equal
     }
 }
@@ -87,7 +99,7 @@ enum HotkeyAction: String, Codable {
         case .toggleMode: return "Toggle Mode"
         }
     }
-    
+
     var detailedDescription: String {
         switch self {
         case .transcribe: return "Legacy transcribe action"
@@ -95,6 +107,24 @@ enum HotkeyAction: String, Codable {
         case .toggleMode: return "Press to start/stop recording"
         }
     }
+}
+
+enum OptionKeyPreference: String, Codable {
+    case any        // Either left or right Option key
+    case leftOnly   // Only left Option key
+    case rightOnly  // Only right Option key
+
+    var description: String {
+        switch self {
+        case .any: return "Either"
+        case .leftOnly: return "Left Only"
+        case .rightOnly: return "Right Only"
+        }
+    }
+
+    // Device-specific flag masks for Option keys
+    static let leftOptionMask: UInt64 = 0x00000020   // NX_DEVICELALTKEYMASK
+    static let rightOptionMask: UInt64 = 0x00000040  // NX_DEVICERALTKEYMASK
 }
 
 enum KeyCodeMap {

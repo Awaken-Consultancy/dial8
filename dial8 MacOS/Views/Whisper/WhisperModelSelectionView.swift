@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WhisperModelSelectionView: View {
     @ObservedObject var whisperManager = WhisperManager.shared
+    @StateObject private var speechRecognitionManager = SpeechRecognitionManager.shared
     @EnvironmentObject var audioManager: AudioManager
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("enableTranscriptionCleaning") private var enableTranscriptionCleaning = true
@@ -10,7 +11,7 @@ struct WhisperModelSelectionView: View {
     var showTitle: Bool = true
     var showDescription: Bool = true
     var compact: Bool = false
-    
+
     // Add language selection state
     @AppStorage("selectedLanguage") private var selectedLanguage: String = "auto"
     
@@ -109,73 +110,258 @@ struct WhisperModelSelectionView: View {
             VStack(alignment: .leading, spacing: 16) {
                     // Voice Control Settings Section
                     VStack(alignment: .leading, spacing: 16) {
-                        // Model Management Section
+                        // Engine Selection Section
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "cpu")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.blue)
+                                Text("Speech Recognition Engine")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                            }
+
+                            // Engine Selection
+                            HStack {
+                                Text("Select Engine")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Picker("Engine", selection: $speechRecognitionManager.selectedEngineType) {
+                                    ForEach(SpeechEngineType.allCases) { engine in
+                                        HStack {
+                                            Image(systemName: engine.icon)
+                                            Text(engine.displayName)
+                                        }
+                                        .tag(engine)
+                                    }
+                                }
+                                .frame(width: 200)
+                            }
+
+                            // Engine description
+                            HStack(spacing: 8) {
+                                Image(systemName: speechRecognitionManager.selectedEngineType.icon)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.blue)
+                                Text(speechRecognitionManager.selectedEngineType.description)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(8)
+                            .background(Color.blue.opacity(0.05))
+                            .cornerRadius(6)
+                        }
+                        .padding()
+                        .background(colorScheme == .dark ? Color.white.opacity(0.05) : Color(NSColor.controlBackgroundColor))
+                        .cornerRadius(8)
+
+                        // Model Management Section - conditional based on engine
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Image(systemName: "waveform")
                                     .font(.system(size: 14))
                                     .foregroundColor(.blue)
-                                Text("Speech to Text Model")
+                                Text(speechRecognitionManager.selectedEngineType == .whisper ? "Whisper Models" : "Parakeet Model")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
                             }
-                            
-                            // Model Selection Dropdown
-                            HStack {
-                                Text("Select Model")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Picker("Model", selection: $whisperManager.selectedModelSize) {
-                                    ForEach(whisperManager.availableModels, id: \.id) { model in
-                                        Text(model.displayInfo.displayName)
-                                            .tag(model.id)
+
+                            if speechRecognitionManager.selectedEngineType == .whisper {
+                                // Whisper Model Selection Dropdown
+                                HStack {
+                                    Text("Select Model")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Picker("Model", selection: $whisperManager.selectedModelSize) {
+                                        ForEach(whisperManager.availableModels, id: \.id) { model in
+                                            Text(model.displayInfo.displayName)
+                                                .tag(model.id)
+                                        }
+                                    }
+                                    .frame(width: 200)
+                                    .onChange(of: whisperManager.selectedModelSize) { newValue in
+                                        whisperManager.selectModel(modelSize: newValue)
                                     }
                                 }
-                                .frame(width: 200)
-                                .onChange(of: whisperManager.selectedModelSize) { newValue in
-                                    whisperManager.selectModel(modelSize: newValue)
-                                }
                             }
                             
-                            // Show warning if no models are available
-                            if whisperManager.availableModels.allSatisfy({ !$0.isAvailable }) && !whisperManager.isDownloading {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                        .font(.system(size: 14))
-                                    Text("No speech models downloaded. Select a model and click 'Download Model' to enable transcription.")
+                            // Show warning if no models are available (conditional based on engine)
+                            if speechRecognitionManager.selectedEngineType == .whisper {
+                                if whisperManager.availableModels.allSatisfy({ !$0.isAvailable }) && !whisperManager.isDownloading {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                            .font(.system(size: 14))
+                                        Text("No Whisper models downloaded. Select a model and click 'Download' to enable transcription.")
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                    }
+                                    .padding(8)
+                                    .background(Color.orange.opacity(0.1))
+                                    .cornerRadius(6)
+                                }
+
+                                // Whisper Model List
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ForEach(whisperManager.availableModels, id: \.id) { model in
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            HStack {
+                                                Image(systemName: model.displayInfo.icon)
+                                                    .font(.system(size: 14))
+                                                    .foregroundColor(.blue)
+
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(model.displayInfo.displayName)
+                                                        .font(.subheadline)
+                                                        .fontWeight(.medium)
+
+                                                    Text(model.displayInfo.description)
+                                                        .font(.caption)
+                                                        .foregroundColor(.secondary)
+                                                        .lineLimit(2)
+                                                }
+
+                                                Spacer()
+
+                                                if model.isAvailable {
+                                                    HStack(spacing: 4) {
+                                                        Image(systemName: "checkmark.circle.fill")
+                                                            .foregroundColor(.green)
+                                                            .font(.system(size: 12))
+                                                        Text("Ready")
+                                                            .font(.caption)
+                                                            .foregroundColor(.green)
+
+                                                        Text("|")
+                                                            .foregroundColor(.secondary.opacity(0.5))
+                                                            .font(.caption)
+                                                            .padding(.horizontal, 4)
+
+                                                        Button(action: {
+                                                            whisperManager.deleteModel(modelSize: model.id)
+                                                        }) {
+                                                            HStack(spacing: 4) {
+                                                                Image(systemName: "trash")
+                                                                    .font(.system(size: 12))
+                                                                Text("Remove")
+                                                                    .font(.caption)
+                                                            }
+                                                        }
+                                                        .buttonStyle(.borderless)
+                                                        .foregroundColor(.red)
+                                                    }
+                                                    .padding(.vertical, 4)
+                                                    .padding(.horizontal, 8)
+                                                    .background(Color.secondary.opacity(0.1))
+                                                    .cornerRadius(6)
+                                                } else if whisperManager.isDownloading && model.id == whisperManager.selectedModelSize {
+                                                    VStack(alignment: .trailing, spacing: 4) {
+                                                        HStack(spacing: 4) {
+                                                            ProgressView()
+                                                                .scaleEffect(0.5)
+                                                            Text("Downloading...")
+                                                                .font(.caption)
+                                                                .foregroundColor(.secondary)
+                                                        }
+
+                                                        // Progress bar
+                                                        GeometryReader { geometry in
+                                                            ZStack(alignment: .leading) {
+                                                                Rectangle()
+                                                                    .frame(width: geometry.size.width, height: 4)
+                                                                    .opacity(0.3)
+                                                                    .foregroundColor(.gray)
+
+                                                                Rectangle()
+                                                                    .frame(width: geometry.size.width * CGFloat(whisperManager.downloadProgress), height: 4)
+                                                                    .foregroundColor(.blue)
+                                                            }
+                                                            .cornerRadius(2)
+                                                        }
+                                                        .frame(height: 4)
+                                                        .frame(width: 200)
+
+                                                        Text("\(Int(whisperManager.downloadProgress * 100))%")
+                                                            .font(.caption2)
+                                                            .foregroundColor(.secondary)
+                                                    }
+                                                } else {
+                                                    Button(action: {
+                                                        whisperManager.downloadModel(modelSize: model.id)
+                                                    }) {
+                                                        HStack(spacing: 4) {
+                                                            Image(systemName: "arrow.down.circle.fill")
+                                                                .font(.system(size: 12))
+                                                            Text("Download")
+                                                                .font(.caption)
+                                                        }
+                                                    }
+                                                    .buttonStyle(.borderless)
+                                                    .foregroundColor(.blue)
+                                                }
+                                            }
+
+                                            if let recommendation = model.displayInfo.recommendation {
+                                                Text(recommendation)
+                                                    .font(.caption2)
+                                                    .foregroundColor(.blue)
+                                                    .italic()
+                                            }
+                                        }
+                                        .padding(.vertical, 4)
+
+                                        if model.id != whisperManager.availableModels.last?.id {
+                                            Divider()
+                                        }
+                                    }
+                                }
+
+                                if let errorMessage = whisperManager.errorMessage {
+                                    Text(errorMessage)
                                         .font(.caption)
-                                        .foregroundColor(.orange)
+                                        .foregroundColor(.red)
+                                        .lineLimit(2)
                                 }
-                                .padding(8)
-                                .background(Color.orange.opacity(0.1))
-                                .cornerRadius(6)
-                            }
-                            
-                            // Model List
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(whisperManager.availableModels, id: \.id) { model in
+                            } else {
+                                // Parakeet Model Section
+                                if !speechRecognitionManager.parakeetEngine.isReady && !speechRecognitionManager.parakeetEngine.isDownloading {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                            .font(.system(size: 14))
+                                        Text("Parakeet model not downloaded. Click 'Download' to enable fast transcription.")
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                    }
+                                    .padding(8)
+                                    .background(Color.orange.opacity(0.1))
+                                    .cornerRadius(6)
+                                }
+
+                                // Parakeet Model Display
+                                ForEach(speechRecognitionManager.parakeetEngine.availableModels, id: \.id) { model in
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
-                                            Image(systemName: model.displayInfo.icon)
+                                            Image(systemName: model.icon)
                                                 .font(.system(size: 14))
                                                 .foregroundColor(.blue)
-                                            
+
                                             VStack(alignment: .leading, spacing: 2) {
-                                                Text(model.displayInfo.displayName)
+                                                Text(model.name)
                                                     .font(.subheadline)
                                                     .fontWeight(.medium)
-                                                
-                                                Text(model.displayInfo.description)
+
+                                                Text(model.description)
                                                     .font(.caption)
                                                     .foregroundColor(.secondary)
                                                     .lineLimit(2)
                                             }
-                                            
+
                                             Spacer()
-                                            
-                                            if model.isAvailable {
+
+                                            if speechRecognitionManager.parakeetEngine.isReady {
                                                 HStack(spacing: 4) {
                                                     Image(systemName: "checkmark.circle.fill")
                                                         .foregroundColor(.green)
@@ -183,30 +369,12 @@ struct WhisperModelSelectionView: View {
                                                     Text("Ready")
                                                         .font(.caption)
                                                         .foregroundColor(.green)
-                                                    
-                                                    Text("|")
-                                                        .foregroundColor(.secondary.opacity(0.5))
-                                                        .font(.caption)
-                                                        .padding(.horizontal, 4)
-                                                    
-                                                    Button(action: {
-                                                        whisperManager.deleteModel(modelSize: model.id)
-                                                    }) {
-                                                        HStack(spacing: 4) {
-                                                            Image(systemName: "trash")
-                                                                .font(.system(size: 12))
-                                                            Text("Remove")
-                                                                .font(.caption)
-                                                        }
-                                                    }
-                                                    .buttonStyle(.borderless)
-                                                    .foregroundColor(.red)
                                                 }
                                                 .padding(.vertical, 4)
                                                 .padding(.horizontal, 8)
                                                 .background(Color.secondary.opacity(0.1))
                                                 .cornerRadius(6)
-                                            } else if whisperManager.isDownloading && model.id == whisperManager.selectedModelSize {
+                                            } else if speechRecognitionManager.parakeetEngine.isDownloading {
                                                 VStack(alignment: .trailing, spacing: 4) {
                                                     HStack(spacing: 4) {
                                                         ProgressView()
@@ -215,7 +383,7 @@ struct WhisperModelSelectionView: View {
                                                             .font(.caption)
                                                             .foregroundColor(.secondary)
                                                     }
-                                                    
+
                                                     // Progress bar
                                                     GeometryReader { geometry in
                                                         ZStack(alignment: .leading) {
@@ -223,23 +391,23 @@ struct WhisperModelSelectionView: View {
                                                                 .frame(width: geometry.size.width, height: 4)
                                                                 .opacity(0.3)
                                                                 .foregroundColor(.gray)
-                                                            
+
                                                             Rectangle()
-                                                                .frame(width: geometry.size.width * CGFloat(whisperManager.downloadProgress), height: 4)
+                                                                .frame(width: geometry.size.width * CGFloat(speechRecognitionManager.parakeetEngine.downloadProgress), height: 4)
                                                                 .foregroundColor(.blue)
                                                         }
                                                         .cornerRadius(2)
                                                     }
                                                     .frame(height: 4)
                                                     .frame(width: 200)
-                                                    
-                                                    Text("\(Int(whisperManager.downloadProgress * 100))%")
+
+                                                    Text("\(Int(speechRecognitionManager.parakeetEngine.downloadProgress * 100))%")
                                                         .font(.caption2)
                                                         .foregroundColor(.secondary)
                                                 }
                                             } else {
                                                 Button(action: {
-                                                    whisperManager.downloadModel(modelSize: model.id)
+                                                    speechRecognitionManager.parakeetEngine.downloadModel(modelId: model.id)
                                                 }) {
                                                     HStack(spacing: 4) {
                                                         Image(systemName: "arrow.down.circle.fill")
@@ -252,8 +420,8 @@ struct WhisperModelSelectionView: View {
                                                 .foregroundColor(.blue)
                                             }
                                         }
-                                        
-                                        if let recommendation = model.displayInfo.recommendation {
+
+                                        if let recommendation = model.recommendation {
                                             Text(recommendation)
                                                 .font(.caption2)
                                                 .foregroundColor(.blue)
@@ -261,18 +429,14 @@ struct WhisperModelSelectionView: View {
                                         }
                                     }
                                     .padding(.vertical, 4)
-                                    
-                                    if model.id != whisperManager.availableModels.last?.id {
-                                        Divider()
-                                    }
                                 }
-                            }
-                            
-                            if let errorMessage = whisperManager.errorMessage {
-                                Text(errorMessage)
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                                    .lineLimit(2)
+
+                                if let errorMessage = speechRecognitionManager.parakeetEngine.errorMessage {
+                                    Text(errorMessage)
+                                        .font(.caption)
+                                        .foregroundColor(.red)
+                                        .lineLimit(2)
+                                }
                             }
                         }
                         .padding()

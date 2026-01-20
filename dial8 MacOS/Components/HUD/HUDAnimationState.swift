@@ -17,7 +17,7 @@ class HUDAnimationState: ObservableObject {
     @Published var scaleY: CGFloat = 0.01
     @Published var opacity: CGFloat = 0
     @Published var rotationAngle: Double = 0 // For 3D book fold effect
-    @Published var perspectiveAmount: CGFloat = 0
+    @Published var perspectiveAmount: CGFloat = 0.001  // Avoid 0 to prevent singular matrix
     
     // MARK: - Ring Axes
     @Published var ringAxis1: (x: CGFloat, y: CGFloat, z: CGFloat) = (0, 1, 0)
@@ -107,7 +107,7 @@ class HUDAnimationState: ObservableObject {
             scaleY = 1
             opacity = 1
             rotationAngle = 0
-            perspectiveAmount = 0
+            perspectiveAmount = 0.001  // Use tiny value instead of 0 to avoid singular matrix
         }
     }
     

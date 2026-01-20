@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		23B822972CDCE16B0003C523 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 23B822962CDCE16B0003C523 /* Sparkle */; };
+		CF0F1A7E2F1EC2F200BA5A30 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = CF0F1A7D2F1EC2F200BA5A30 /* FluidAudio */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -117,6 +118,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CF0F1A7E2F1EC2F200BA5A30 /* FluidAudio in Frameworks */,
 				23B822972CDCE16B0003C523 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -204,6 +206,7 @@
 			name = "dial8 MacOS";
 			packageProductDependencies = (
 				23B822962CDCE16B0003C523 /* Sparkle */,
+				CF0F1A7D2F1EC2F200BA5A30 /* FluidAudio */,
 			);
 			productName = "thinking aloud MacOS";
 			productReference = 2369467F2CB1F357002E8CBD /* Dial8.app */;
@@ -330,6 +333,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				23B822932CDCE0E20003C523 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				CF0F1A7C2F1EC2F200BA5A30 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 23C7615D2C92231C0094B283 /* Products */;
@@ -541,11 +545,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "dial8 MacOS/dial8_MacOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_ASSET_PATHS = "\"dial8 MacOS/Preview Content\"";
-				DEVELOPMENT_TEAM = 2725SDV2L5;
+				DEVELOPMENT_TEAM = A9M7YAYM9D;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -564,8 +569,9 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 2.4;
 				"OTHER_SWIFT_FLAGS[arch=*]" = "-DDEVELOPMENT";
-				PRODUCT_BUNDLE_IDENTIFIER = com.liam.dial8;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hanzhi.dial8;
 				PRODUCT_NAME = Dial8;
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -616,13 +622,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "dial8 MacOS/dial8_MacOS.entitlements";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Mac Developer";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_ASSET_PATHS = "\"dial8 MacOS/Preview Content\"";
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=macosx*]" = 2725SDV2L5;
+				DEVELOPMENT_TEAM = A9M7YAYM9D;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -640,10 +645,9 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 2.4;
-				PRODUCT_BUNDLE_IDENTIFIER = com.dial8;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hanzhi.dial8;
 				PRODUCT_NAME = Dial8;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "Dial8 macOS Provisioning Profile";
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -847,6 +851,14 @@
 				minimumVersion = 2.6.4;
 			};
 		};
+		CF0F1A7C2F1EC2F200BA5A30 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/FluidInference/FluidAudio.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.8.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -854,6 +866,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 23B822932CDCE0E20003C523 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		CF0F1A7D2F1EC2F200BA5A30 /* FluidAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CF0F1A7C2F1EC2F200BA5A30 /* XCRemoteSwiftPackageReference "FluidAudio" */;
+			productName = FluidAudio;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

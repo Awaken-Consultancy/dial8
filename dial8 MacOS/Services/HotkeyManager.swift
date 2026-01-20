@@ -21,7 +21,7 @@ class HotkeyManager: ObservableObject {
     
     private func loadSavedConfigurations() {
         // Force reset to new defaults by checking against a version number
-        let currentConfigVersion = 6 // Increment this when you want to force new defaults
+        let currentConfigVersion = 7 // Increment this when you want to force new defaults
         let savedConfigVersion = UserDefaults.standard.integer(forKey: "hotkeyConfigurationsVersion")
         
         if savedConfigVersion < currentConfigVersion {
@@ -142,12 +142,13 @@ class HotkeyManager: ObservableObject {
     
     private func createDefaultConfigurations() -> [HotkeyConfiguration] {
         return [
-            // Default push-to-talk hotkey (Option only)
+            // Default push-to-talk hotkey (Right Option only)
             HotkeyConfiguration(
                 action: .pushToTalk,
                 keyCombo: KeyCombo(
                     keyCode: -1,
-                    modifiers: CGEventFlags.maskAlternate.rawValue
+                    modifiers: CGEventFlags.maskAlternate.rawValue,
+                    optionKeyPreference: .rightOnly
                 ),
                 isEnabled: true
             )
@@ -161,7 +162,7 @@ class HotkeyManager: ObservableObject {
         }
     }
     
-    func findConfigurationForKeyCombo(modifiers: UInt64, keyCode: Int) -> HotkeyConfiguration? {
+    func findConfigurationForKeyCombo(modifiers: UInt64, keyCode: Int, rawFlags: UInt64? = nil) -> HotkeyConfiguration? {
         // Create a mask for the relevant modifier flags
         let relevantModifiers: UInt64 = [
             CGEventFlags.maskCommand.rawValue,
@@ -170,14 +171,10 @@ class HotkeyManager: ObservableObject {
             CGEventFlags.maskAlternate.rawValue,
             CGEventFlags.maskSecondaryFn.rawValue
         ].reduce(0, |)
-        
+
         // Mask out irrelevant flags
         let maskedModifiers = modifiers & relevantModifiers
-        
-        for (index, config) in hotkeyConfigurations.enumerated() {
-            let configModifiers = config.keyCombo.modifiers & relevantModifiers
-        }
-        
+
         let config = hotkeyConfigurations.first { config in
             // For modifier-only shortcuts (like Fn or Control)
             if config.keyCombo.keyCode == -1 {
@@ -186,29 +183,69 @@ class HotkeyManager: ObservableObject {
                 // 2. The pressed key is ONLY modifiers (keyCode == -1)
                 // 3. The modifiers match exactly
                 let configModifiers = config.keyCombo.modifiers & relevantModifiers
-                let matches = keyCode == -1 && configModifiers == maskedModifiers
-                return matches
+                let modifiersMatch = keyCode == -1 && configModifiers == maskedModifiers
+
+                // Check option key preference if the combo uses Option
+                if modifiersMatch && config.keyCombo.hasOption {
+                    return checkOptionKeyPreference(config.keyCombo.optionKeyPreference, rawFlags: rawFlags)
+                }
+
+                return modifiersMatch
             } else {
                 // For key combinations (if we add support for them later)
                 let configModifiers = config.keyCombo.modifiers & relevantModifiers
-                let matches = config.keyCombo.keyCode == keyCode && 
+                let modifiersMatch = config.keyCombo.keyCode == keyCode &&
                             configModifiers == maskedModifiers
-                return matches
+
+                // Check option key preference if the combo uses Option
+                if modifiersMatch && config.keyCombo.hasOption {
+                    return checkOptionKeyPreference(config.keyCombo.optionKeyPreference, rawFlags: rawFlags)
+                }
+
+                return modifiersMatch
             }
         }
-        
+
         return config
+    }
+
+    private func checkOptionKeyPreference(_ preference: OptionKeyPreference, rawFlags: UInt64?) -> Bool {
+        guard let rawFlags = rawFlags else {
+            // If no raw flags provided, allow any option key
+            return true
+        }
+
+        let isLeftOption = (rawFlags & OptionKeyPreference.leftOptionMask) != 0
+        let isRightOption = (rawFlags & OptionKeyPreference.rightOptionMask) != 0
+
+        switch preference {
+        case .any:
+            return true
+        case .leftOnly:
+            return isLeftOption && !isRightOption
+        case .rightOnly:
+            return isRightOption && !isLeftOption
+        }
     }
     
     func toggleHotkeyEnabled(_ configuration: HotkeyConfiguration) {
         if let index = hotkeyConfigurations.firstIndex(where: { $0.id == configuration.id }) {
             var updatedConfig = hotkeyConfigurations[index]
-            
+
             // Since we only have one hotkey now, always keep it enabled
             updatedConfig.isEnabled = true
-            
+
             hotkeyConfigurations[index] = updatedConfig
             print("🔄 Toggled hotkey enabled state: \(updatedConfig.isEnabled)")
+        }
+    }
+
+    func updateOptionKeyPreference(for configuration: HotkeyConfiguration, preference: OptionKeyPreference) {
+        if let index = hotkeyConfigurations.firstIndex(where: { $0.id == configuration.id }) {
+            var updatedConfig = hotkeyConfigurations[index]
+            updatedConfig.keyCombo.optionKeyPreference = preference
+            hotkeyConfigurations[index] = updatedConfig
+            print("🔄 Updated option key preference to: \(preference.description)")
         }
     }
 }

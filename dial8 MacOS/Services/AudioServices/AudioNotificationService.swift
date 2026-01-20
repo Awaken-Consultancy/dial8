@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 
+@MainActor
 class AudioNotificationService: ObservableObject {
     // MARK: - Published Properties
     @Published var whisperModelIsReady: Bool = false

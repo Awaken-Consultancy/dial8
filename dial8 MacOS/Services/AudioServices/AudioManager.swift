@@ -116,8 +116,7 @@ class AudioManager: ObservableObject {
         )
         
         self.audioProcessingQueueService = AudioProcessingQueueService(
-            audioTranscriptionService: audioTranscriptionService,
-            whisperManager: WhisperManager.shared
+            audioTranscriptionService: audioTranscriptionService
         )
         
         self.audioRecoveryService = AudioRecoveryService(
@@ -570,15 +569,12 @@ class AudioManager: ObservableObject {
     
     private func setupAudioEngineForRecording() {
         print("AudioManager: Setting up audio engine for recording")
-        
+
         // Setup the engine
         setupAudioEngine()
-        
-        // Add a minimum delay to ensure loading animation is visible
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            // Check engine state and wait for it to be ready
-            self?.checkEngineReadyAndStartRecording()
-        }
+
+        // Check engine state immediately (no artificial delay for faster response)
+        checkEngineReadyAndStartRecording()
     }
     
     private func checkEngineReadyAndStartRecording(attempts: Int = 0) {
@@ -659,6 +655,7 @@ class AudioManager: ObservableObject {
         // Set up audio buffer callback for level monitoring
         self.audioEngineService.onAudioBuffer = { [weak self] buffer in
             AudioLevelMonitor.shared.processAudioBuffer(buffer)
+            self?.recordingService.writeBuffer(buffer)
         }
         
         // Start the engine

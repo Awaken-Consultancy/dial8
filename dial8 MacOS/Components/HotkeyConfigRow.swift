@@ -95,7 +95,16 @@ struct HotkeyConfigRow: View {
         if keyCombo.modifiers & CGEventFlags.maskCommand.rawValue != 0 { components.append("Command") }
         if keyCombo.modifiers & CGEventFlags.maskShift.rawValue != 0 { components.append("Shift") }
         if keyCombo.modifiers & CGEventFlags.maskControl.rawValue != 0 { components.append("Control") }
-        if keyCombo.modifiers & CGEventFlags.maskAlternate.rawValue != 0 { components.append("Option") }
+        if keyCombo.modifiers & CGEventFlags.maskAlternate.rawValue != 0 {
+            switch keyCombo.optionKeyPreference {
+            case .any:
+                components.append("Option")
+            case .leftOnly:
+                components.append("Left Option")
+            case .rightOnly:
+                components.append("Right Option")
+            }
+        }
         if keyCombo.modifiers & CGEventFlags.maskSecondaryFn.rawValue != 0 { components.append("Fn") }
 
         // Add the primary key if it's not a modifier

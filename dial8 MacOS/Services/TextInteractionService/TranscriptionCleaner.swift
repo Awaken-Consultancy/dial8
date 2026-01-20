@@ -5,10 +5,19 @@ import FoundationModels
 
 class TranscriptionCleaner {
     static let shared = TranscriptionCleaner()
-    
+
     #if canImport(FoundationModels)
+    private var _session: Any?
+
     @available(macOS 26.0, *)
-    private lazy var session: LanguageModelSession = LanguageModelSession()
+    private var session: LanguageModelSession {
+        if let existing = _session as? LanguageModelSession {
+            return existing
+        }
+        let newSession = LanguageModelSession()
+        _session = newSession
+        return newSession
+    }
     #endif
     private let queue = DispatchQueue(label: "com.dial8.transcriptionCleaner")
     

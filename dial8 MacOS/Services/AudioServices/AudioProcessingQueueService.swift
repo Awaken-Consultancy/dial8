@@ -1,27 +1,28 @@
 import Foundation
 import AVFoundation
 import Combine
+import os.log
 
 class AudioProcessingQueueService: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioProcessingQueueService")
+
     // Processing queue for audio segments
     private var processingQueue: [(URL, Date)] = []
     private var isCurrentlyProcessing = false
-    
+
     // Throttling for audio processing
     private var lastProcessingTime: Date?
     private let processingThrottle: TimeInterval = 0.1
-    
+
     // Dependencies
     private let audioTranscriptionService: AudioTranscriptionService
-    private let whisperManager: WhisperManager
-    
+
     // State
     @Published private(set) var queueLength: Int = 0
-    
-    init(audioTranscriptionService: AudioTranscriptionService, whisperManager: WhisperManager = WhisperManager.shared) {
+
+    init(audioTranscriptionService: AudioTranscriptionService) {
         self.audioTranscriptionService = audioTranscriptionService
-        self.whisperManager = whisperManager
-        
+
         // Set up notification observer for audio segments ready for processing
         NotificationCenter.default.addObserver(
             self,
@@ -53,29 +54,33 @@ class AudioProcessingQueueService: ObservableObject {
     func processNextInQueue() {
         // If already processing or queue is empty, return
         guard !isCurrentlyProcessing, !processingQueue.isEmpty else { return }
-        
+
         // Mark as processing
         isCurrentlyProcessing = true
-        
+
         // Get next item to process
         let (audioURL, timestamp) = processingQueue.removeFirst()
         queueLength = processingQueue.count
-        
-        print("🎯 Processing queued audio segment...")
-        
+
+        logger.debug("Processing queued audio segment...")
+
         // Use high-priority queue for transcription
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        let useLocalSpeechModel = self.audioTranscriptionService.useLocalSpeechModel
+
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
-            
-            let useLocalWhisperModel = self.audioTranscriptionService.useLocalWhisperModel
-            
-            if useLocalWhisperModel && self.whisperManager.isReady {
-                self.processWithWhisper(audioURL: audioURL, timestamp: timestamp)
+
+            let manager = SpeechRecognitionManager.shared
+            self.logger.info("🎤 Processing audio: useLocalSpeechModel=\(useLocalSpeechModel), manager.isReady=\(manager.isReady), selectedEngine=\(manager.selectedEngineType.rawValue)")
+
+            if useLocalSpeechModel && manager.isReady {
+                self.processWithSpeechRecognition(audioURL: audioURL, timestamp: timestamp, manager: manager)
             } else {
+                self.logger.warning("🎤 Using backend fallback (model not ready or disabled)")
                 self.sendAudioToBackend(fileURL: audioURL) {
                     // Clean up immediately
                     try? FileManager.default.removeItem(at: audioURL)
-                    
+
                     DispatchQueue.main.async {
                         self.isCurrentlyProcessing = false
                         self.processNextInQueue()
@@ -84,28 +89,28 @@ class AudioProcessingQueueService: ObservableObject {
             }
         }
     }
-    
-    private func processWithWhisper(audioURL: URL, timestamp: Date) {
+
+    @MainActor
+    private func processWithSpeechRecognition(audioURL: URL, timestamp: Date, manager: SpeechRecognitionManager) {
         let selectedLanguage = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "english"
-        
-        whisperManager.transcribe(
+
+        manager.transcribe(
             audioURL: audioURL,
-            mode: .transcriptionOnly,
-            targetLanguage: selectedLanguage
+            language: selectedLanguage
         ) { [weak self] result in
             guard let self = self else { return }
-            
+
             // Clean up immediately after getting result
             try? FileManager.default.removeItem(at: audioURL)
-            
+
             DispatchQueue.main.async {
                 switch result {
                 case .success(let transcription):
                     self.audioTranscriptionService.handleTranscriptionResult(transcription, recordingStartTime: timestamp)
                 case .failure(let error):
-                    print("Transcription error: \(error)")
+                    self.logger.error("Transcription error: \(error.localizedDescription)")
                 }
-                
+
                 // Mark as done and process next
                 self.isCurrentlyProcessing = false
                 self.processNextInQueue()

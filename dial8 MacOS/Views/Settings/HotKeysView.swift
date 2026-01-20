@@ -3,7 +3,7 @@ import SwiftUI
 struct HotKeysView: View {
     @StateObject private var hotkeyManager = HotkeyManager.shared
     @Environment(\.colorScheme) private var colorScheme
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // Push to Talk Hotkey
@@ -14,12 +14,12 @@ struct HotKeysView: View {
                             Circle()
                                 .fill(Color.blue.opacity(0.1))
                                 .frame(width: 32, height: 32)
-                            
+
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 14))
                                 .foregroundColor(.blue)
                         }
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Push to Talk")
                                 .font(.system(size: 14, weight: .medium))
@@ -27,18 +27,45 @@ struct HotKeysView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         Spacer()
-                        
+
                         HotkeyConfigRow(configuration: pushToTalkConfig)
                     }
-                    
+
+                    // Option key preference picker (only show if Option is used)
+                    if pushToTalkConfig.keyCombo.hasOption {
+                        HStack(spacing: 8) {
+                            Image(systemName: "option")
+                                .font(.system(size: 12))
+                                .foregroundColor(.purple)
+
+                            Text("Option Key:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+
+                            Picker("", selection: Binding(
+                                get: { pushToTalkConfig.keyCombo.optionKeyPreference },
+                                set: { newValue in
+                                    hotkeyManager.updateOptionKeyPreference(for: pushToTalkConfig, preference: newValue)
+                                }
+                            )) {
+                                Text("Either").tag(OptionKeyPreference.any)
+                                Text("Left Only").tag(OptionKeyPreference.leftOnly)
+                                Text("Right Only").tag(OptionKeyPreference.rightOnly)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 200)
+                        }
+                        .padding(.leading, 44) // Align with text above
+                    }
+
                     // Space bar lock instruction
                     HStack(spacing: 8) {
                         Image(systemName: "lock")
                             .font(.system(size: 12))
                             .foregroundColor(.blue)
-                        
+
                         Text("Press Space while recording to lock (hands-free mode)")
                             .font(.caption)
                             .foregroundColor(.secondary)
