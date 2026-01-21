@@ -1,6 +1,8 @@
 import AVFoundation
 import Foundation
 import Combine
+import CoreAudio
+import AudioToolbox
 
 enum AudioEngineState {
     case inactive      // Fully stopped
@@ -11,22 +13,24 @@ enum AudioEngineState {
 class AudioEngineService: ObservableObject {
     private(set) var audioEngine: AVAudioEngine?
     @Published private(set) var engineState: AudioEngineState = .inactive
-    
+
     var onAudioBuffer: ((AVAudioPCMBuffer) -> Void)?
     private var isConfigurationPending = false
-    
+
     // Added converterNode for sample rate conversion
     private var converterNode: AVAudioMixerNode?
-    
+
     private var isRecoveryInProgress = false
     private var currentFormat: AVAudioFormat?
     private var deviceChangeObserver: NSObjectProtocol?
     private var configChangeObserver: NSObjectProtocol?
-    
+    private var inputDeviceChangeObserver: NSObjectProtocol?
+
     private var audioConverter: AVAudioConverter?
-    
+
     init() {
         setupNotifications()
+        setupInputDeviceChangeObserver()
         // Don't automatically setup the audio engine
         // It will be setup when needed
     }
@@ -59,6 +63,55 @@ class AudioEngineService: ObservableObject {
         }
     }
     
+    private func setupInputDeviceChangeObserver() {
+        inputDeviceChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("SelectedInputDeviceChanged"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("AudioEngineService: Selected input device changed, reconfiguring...")
+            self?.reconfigureEngine()
+        }
+    }
+
+    private func configureInputDevice() {
+        guard let audioEngine = audioEngine else { return }
+
+        // Get the selected device from AudioDeviceEnumerationService
+        let deviceService = AudioDeviceEnumerationService.shared
+
+        guard let selectedUID = deviceService.selectedDeviceUID,
+              let deviceID = deviceService.getDeviceIDForSelectedDevice() else {
+            // Use system default - no configuration needed
+            print("AudioEngineService: Using system default input device")
+            return
+        }
+
+        // Set the input device for AVAudioEngine using AudioUnit
+        let inputNode = audioEngine.inputNode
+
+        guard let audioUnit = inputNode.audioUnit else {
+            print("AudioEngineService: Failed to get audio unit from input node")
+            return
+        }
+
+        var deviceIDValue = deviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceIDValue,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+
+        if status == noErr {
+            print("AudioEngineService: Set input device to ID \(deviceID) (\(deviceService.getCurrentDeviceName()))")
+        } else {
+            print("AudioEngineService: Failed to set input device: \(status)")
+        }
+    }
+
     private func handleDeviceChange() {
         print("AudioEngineService: Device change detected")
         // Use a longer delay for device changes to allow the system to stabilize
@@ -109,18 +162,21 @@ class AudioEngineService: ObservableObject {
     
     func setupAudioEngine() {
         print("AudioEngineService: Setting up audio engine - START")
-        
+
         // Clean up existing engine if any
         stopEngine()
-        
+
         // Create new engine
         audioEngine = AVAudioEngine()
-        
+
         guard let audioEngine = audioEngine else {
             print("AudioEngineService: Failed to create audio engine")
             return
         }
-        
+
+        // Configure selected input device before accessing input node
+        configureInputDevice()
+
         // Get the native input format
         let inputNode = audioEngine.inputNode
         let nativeFormat = inputNode.inputFormat(forBus: 0)
@@ -349,6 +405,9 @@ class AudioEngineService: ObservableObject {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = inputDeviceChangeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         stopEngine()
