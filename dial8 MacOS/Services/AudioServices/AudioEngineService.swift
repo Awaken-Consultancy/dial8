@@ -285,18 +285,16 @@ class AudioEngineService: ObservableObject {
     
     func stopEngine() {
         print("AudioEngineService: Stopping engine...")
-        
-        // Set state to prevent new operations
-        isConfigurationPending = true
+
         engineState = .inactive
-        
+
         // Remove tap from converter node if available
         if let converter = converterNode {
             converter.removeTap(onBus: 0)
             converterNode = nil
             print("AudioEngineService: Removed converter tap")
         }
-        
+
         // Stop engine if running
         if let engine = audioEngine, engine.isRunning {
             // Remove any remaining taps from input node
@@ -304,14 +302,12 @@ class AudioEngineService: ObservableObject {
             engine.stop()
             print("AudioEngineService: Engine stopped")
         }
-        
+
         // Clear all references
         audioEngine = nil
         currentFormat = nil
         audioConverter = nil
-        
-        // Reset configuration state
-        isConfigurationPending = false
+
         print("AudioEngineService: Engine cleanup complete")
     }
     
@@ -355,16 +351,19 @@ class AudioEngineService: ObservableObject {
     func reconfigureEngine() {
         print("AudioEngineService: Reconfiguring engine")
         isConfigurationPending = true
-        
+
         // Stop current engine
         stopEngine()
-        
+
         // Wait before setting up new engine
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self = self else { return }
             self.setupAudioEngine()
             _ = self.startEngine()
             self.isConfigurationPending = false
+
+            // Reset user-initiated flag as a safety measure after reconfiguration is complete
+            AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange = false
         }
     }
     

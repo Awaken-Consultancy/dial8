@@ -91,43 +91,45 @@ class HUDAnimationState: ObservableObject {
     // MARK: - Folding Animation Methods
     func animateIn() {
         // Start with folded state
+        // Avoid -90 degrees exactly as it creates a singular projection matrix
         foldProgress = 0
-        scaleY = 0.01
+        scaleY = 0.05
         opacity = 0
-        rotationAngle = -90
-        perspectiveAmount = 1
+        rotationAngle = -75
+        perspectiveAmount = 0.5
         isVisible = true
-        
+
         // Play open sound effect
         HUDSoundEffects.shared.playOpenSound()
-        
+
         // Animate to open state with book unfolding effect
         withAnimation(.interpolatingSpring(stiffness: 280, damping: 25)) {
             foldProgress = 1
             scaleY = 1
             opacity = 1
             rotationAngle = 0
-            perspectiveAmount = 0.001  // Use tiny value instead of 0 to avoid singular matrix
+            perspectiveAmount = 0.001
         }
     }
     
     func animateOut(completion: @escaping () -> Void) {
         // Play close sound effect
         HUDSoundEffects.shared.playCloseSound()
-        
+
         // Animate to folded state with even faster, tighter fold
+        // Avoid angles too close to -90 to prevent singular matrix
         withAnimation(.interpolatingSpring(stiffness: 700, damping: 45)) {
             foldProgress = 0
-            scaleY = 0.001  // Even thinner
-            rotationAngle = -88  // Almost completely edge-on
-            perspectiveAmount = 1.5  // More dramatic perspective
+            scaleY = 0.05
+            rotationAngle = -75
+            perspectiveAmount = 0.8
         }
-        
+
         // Fade out very quickly while folding
         withAnimation(.easeOut(duration: 0.15)) {
             self.opacity = 0
         }
-        
+
         // Call completion after animation completes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             self.isVisible = false

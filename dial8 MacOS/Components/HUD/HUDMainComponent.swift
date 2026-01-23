@@ -61,17 +61,20 @@ class HUDMainController: NSWindowController {
     private let notificationHeight: CGFloat = HUDLayout.height
     private let notificationPadding: CGFloat = 33  // Increased from 16 to 20 for more edge spacing
     private let notificationTopSpacing: CGFloat = 50
-    
+
     private let cleanupDelay: TimeInterval = 30 // 3 seconds delay before cleanup
     private var isAnimating = false
     private var isWindowExpanded = false
     private var isLockedExpanded = false
 
+    // Create interaction state at controller level to avoid StateObject access issues
+    private let interactionState = HUDInteractionState()
+
     init(audioManager: AudioManager) {
         let window = HUDWindow()
         super.init(window: window)
 
-        let contentView = HUDMainView(audioManager: audioManager)
+        let contentView = HUDMainView(audioManager: audioManager, interactionState: interactionState)
         let hostingView = NSHostingView(rootView: contentView)
         hostingView.wantsLayer = true
         hostingView.layer?.cornerRadius = 16  // Match the pill-shaped corner radius
@@ -475,18 +478,19 @@ public class HUDWindow: NSPanel {
 struct HUDMainView: View {
     @ObservedObject private var audioManager: AudioManager
     @StateObject private var animationState = HUDAnimationState()
-    @StateObject var interactionState = HUDInteractionState()
+    @ObservedObject var interactionState: HUDInteractionState
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovering = false
     @State private var isRecordingLocked = false
-    
+
     // Create a computed property to access the accumulated text via AudioTranscriptionService
     private var accumulatedText: String {
         AudioTranscriptionService.shared.accumulatedText
     }
-    
-    init(audioManager: AudioManager) {
+
+    init(audioManager: AudioManager, interactionState: HUDInteractionState) {
         self._audioManager = ObservedObject(wrappedValue: audioManager)
+        self._interactionState = ObservedObject(wrappedValue: interactionState)
     }
     
     var body: some View {

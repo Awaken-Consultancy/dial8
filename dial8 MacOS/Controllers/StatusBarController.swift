@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CoreAudio
 
 class StatusBarController: NSObject, ObservableObject {
     private var statusBar: NSStatusBar?
@@ -138,9 +139,12 @@ class StatusBarController: NSObject, ObservableObject {
         let devices = deviceService.inputDevices
         let selectedUID = deviceService.selectedDeviceUID
 
-        // Add "System Default" option
+        // Get the system default device name
+        let systemDefaultName = getSystemDefaultInputDeviceName() ?? "Unknown"
+
+        // Add "System Default" option with actual device name
         let defaultItem = NSMenuItem(
-            title: "System Default",
+            title: "System Default (\(systemDefaultName))",
             action: #selector(selectMicrophone(_:)),
             keyEquivalent: ""
         )
@@ -265,6 +269,46 @@ class StatusBarController: NSObject, ObservableObject {
 
     @objc private func quitApp() {
         NSApplication.shared.terminate(nil)
+    }
+
+    // MARK: - Audio Device Helpers
+
+    private func getSystemDefaultInputDeviceName() -> String? {
+        var deviceID = AudioDeviceID(0)
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+
+        guard status == noErr else { return nil }
+
+        // Get the device name
+        propertyAddress.mSelector = kAudioDevicePropertyDeviceNameCFString
+        var deviceName: CFString?
+        dataSize = UInt32(MemoryLayout<CFString?>.size)
+
+        let nameStatus = AudioObjectGetPropertyData(
+            deviceID,
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceName
+        )
+
+        guard nameStatus == noErr, let name = deviceName as String? else { return nil }
+        return name
     }
 }
 

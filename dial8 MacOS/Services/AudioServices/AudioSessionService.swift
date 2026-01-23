@@ -8,8 +8,13 @@ class AudioSessionService {
     var onSessionInterruption: ((Bool) -> Void)?
     var onRouteChange: (() -> Void)?
     var onDeviceChange: ((String?) -> Void)?  // New callback with device name
-    
+
+    // Track last known device to detect actual changes
+    private var lastKnownDeviceUID: String?
+
     init() {
+        // Initialize with current device
+        lastKnownDeviceUID = getCurrentInputDeviceUID()
         setupAudioSessionNotifications()
     }
     
@@ -55,19 +60,85 @@ class AudioSessionService {
     }
 
     @objc func handleAudioRouteChange(_ notification: Notification) {
-        print("🎧 Audio route change detected")
-        
+        // Check if this was a user-initiated device change (from dropdown selection)
+        // If so, just update our tracking and skip the notification
+        if AudioDeviceEnumerationService.shared.consumeUserInitiatedFlag() {
+            lastKnownDeviceUID = getCurrentInputDeviceUID()
+            print("🎧 Audio route change detected (user-initiated, suppressing notification)")
+            return
+        }
+
+        // Check if the device actually changed by comparing UIDs
+        let currentDeviceUID = getCurrentInputDeviceUID()
+        if currentDeviceUID == lastKnownDeviceUID {
+            // Device hasn't actually changed - this is just an engine restart
+            print("🎧 Audio config change detected (same device, ignoring)")
+            return
+        }
+
+        // Device actually changed - update tracking and notify
+        lastKnownDeviceUID = currentDeviceUID
+        print("🎧 Audio route change detected (system - device changed)")
+
         // Get the new device name
         let deviceName = getCurrentInputDeviceName()
         print("🎤 New input device: \(deviceName ?? "Unknown")")
-        
+
         // Call both callbacks
         onDeviceChange?(deviceName)
         onRouteChange?()
     }
     
-    // MARK: - Device Name Detection
-    
+    // MARK: - Device Detection
+
+    func getCurrentInputDeviceUID() -> String? {
+        #if os(macOS)
+        // First check if user has selected a specific device
+        if let selectedUID = AudioDeviceEnumerationService.shared.selectedDeviceUID {
+            return selectedUID
+        }
+
+        // Fall back to system default
+        var deviceID = AudioDeviceID(0)
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+
+        guard status == noErr else { return nil }
+
+        // Get the device UID
+        propertyAddress.mSelector = kAudioDevicePropertyDeviceUID
+        var deviceUID: CFString?
+        dataSize = UInt32(MemoryLayout<CFString?>.size)
+
+        let uidStatus = AudioObjectGetPropertyData(
+            deviceID,
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceUID
+        )
+
+        guard uidStatus == noErr, let uid = deviceUID as String? else { return nil }
+        return uid
+        #else
+        return AVAudioSession.sharedInstance().currentRoute.inputs.first?.uid
+        #endif
+    }
+
     func getCurrentInputDeviceName() -> String? {
         #if os(macOS)
         var deviceID = AudioDeviceID(0)
