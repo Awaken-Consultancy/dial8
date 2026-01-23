@@ -113,13 +113,22 @@ class AudioEngineService: ObservableObject {
     }
 
     private func handleDeviceChange() {
-        print("AudioEngineService: Device change detected")
-        // Use a longer delay for device changes to allow the system to stabilize
+        // Skip if this is a user-initiated device change (handled by reconfigureEngine)
+        if AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange {
+            print("AudioEngineService: Device change detected (user-initiated, skipping)")
+            return
+        }
+        print("AudioEngineService: Device change detected (system)")
         gracefulReconfiguration(delay: 0.3)
     }
-    
+
     private func handleConfigurationChange() {
-        print("AudioEngineService: Configuration change detected")
+        // Skip if this is a user-initiated device change (handled by reconfigureEngine)
+        if AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange {
+            print("AudioEngineService: Config change detected (user-initiated, skipping)")
+            return
+        }
+        print("AudioEngineService: Configuration change detected (system)")
         gracefulReconfiguration(delay: 0.1)
     }
     

@@ -62,7 +62,8 @@ class AudioSessionService {
     @objc func handleAudioRouteChange(_ notification: Notification) {
         // Check if this was a user-initiated device change (from dropdown selection)
         // If so, just update our tracking and skip the notification
-        if AudioDeviceEnumerationService.shared.consumeUserInitiatedFlag() {
+        // Note: Check flag without consuming - let reconfigureEngine() reset it when done
+        if AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange {
             lastKnownDeviceUID = getCurrentInputDeviceUID()
             print("🎧 Audio route change detected (user-initiated, suppressing notification)")
             return
