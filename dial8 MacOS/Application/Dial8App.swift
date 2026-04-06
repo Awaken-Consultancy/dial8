@@ -145,8 +145,8 @@ struct ThinkingAloudApp: App {
     }
     
     private func waitForInitialization() async {
-        // Wait for WhisperManager to be ready
-        await WhisperManager.shared.waitUntilReady()
+        // Wait for the selected speech engine (Parakeet or Whisper), not Whisper alone
+        await SpeechRecognitionManager.shared.waitUntilReady()
         
         // Wait for audio engine to be ready
         #if os(macOS)

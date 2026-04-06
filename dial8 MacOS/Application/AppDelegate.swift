@@ -150,8 +150,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
             name: .dismissSelectedTextOverlay,
             object: nil
         )
-        
-        
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            self.presentLaunchPathAdviceIfNeeded()
+        }
+    }
+
+    /// macOS tracks privacy per app path; translocated or folder installs need /Applications for stable TCC.
+    private func presentLaunchPathAdviceIfNeeded() {
+        guard LaunchEnvironment.shouldShowInstallLocationAdvice() else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Install Dial8 in Applications"
+        alert.informativeText = "Opening Dial8 from a folder or disk image can make microphone and accessibility permissions unreliable. Drag Dial8 into your Applications folder and launch it from there (or from Launchpad) so permissions apply consistently."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Don’t Show Again")
+        let response = alert.runModal()
+        if response == .alertSecondButtonReturn {
+            LaunchEnvironment.markInstallLocationAdviceDismissed()
+        }
     }
 
     // MARK: - Sparkle Initialization

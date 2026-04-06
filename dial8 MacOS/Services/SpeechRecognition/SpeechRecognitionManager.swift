@@ -133,14 +133,9 @@ class SpeechRecognitionManager: ObservableObject {
         supportedLanguages.contains(language.lowercased()) || supportedLanguages.contains("auto")
     }
 
-    /// Get the recommended engine for a given language
+    /// Get the recommended engine for a given language (Parakeet is the default product engine).
     func recommendedEngine(for language: String) -> SpeechEngineType {
-        let europeanLanguages = Set(parakeetEngine.supportedLanguages)
-        if europeanLanguages.contains(language.lowercased()) {
-            return .parakeet // Faster for European languages
-        } else {
-            return .whisper // Better multilingual support
-        }
+        .parakeet
     }
 
     // MARK: - Engine-Specific Access
@@ -160,12 +155,7 @@ class SpeechRecognitionManager: ObservableObject {
 
     // MARK: - Migration
 
-    /// Migrate existing users to the new system
+    /// Reserved for future migrations; Parakeet is the default engine (do not auto-switch to Whisper).
     func migrateFromLegacySettings() {
-        // If user had Whisper models downloaded, keep using Whisper
-        if whisperEngine.isReady {
-            selectedEngineType = .whisper
-            logger.info("Migrated to Whisper engine (existing model found)")
-        }
     }
 }

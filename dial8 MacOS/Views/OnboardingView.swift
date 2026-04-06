@@ -248,7 +248,7 @@ struct OnboardingView: View {
                 case .microphone:
                     return Alert(
                         title: Text("Microphone Permission"),
-                        message: Text("Did you grant microphone permission in System Preferences?"),
+                        message: Text("Did you grant microphone permission in System Settings?"),
                         primaryButton: .default(Text("Yes")) {
                             self.microphonePermissionGranted = true
                         },
@@ -257,7 +257,7 @@ struct OnboardingView: View {
                 case .accessibility:
                     return Alert(
                         title: Text("Accessibility Permission"),
-                        message: Text("Did you grant accessibility permission in System Preferences?"),
+                        message: Text("Did you grant accessibility permission in System Settings?"),
                         primaryButton: .default(Text("Yes")) {
                             print("⌨️ ONBOARDING: User clicked Yes on accessibility prompt")
                             let permissionGranted = PermissionManager.shared.checkAccessibilityPermission()
@@ -1447,7 +1447,7 @@ struct OnboardingView: View {
                     // Permission granted
                     self.checkPermissions()
                 } else {
-                    // Permission denied, navigate to System Preferences
+                    // Permission denied, navigate to System Settings
                     self.navigatingToSettingsForMicrophone = true
                 }
             }
@@ -1474,13 +1474,9 @@ struct OnboardingView: View {
         }
     }
 
-    /// Opens System Preferences to the Accessibility privacy settings
+    /// Opens System Settings to the Accessibility privacy settings
     func openSystemPreferencesPrivacyAccessibility() {
-        #if os(macOS)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
-        #endif
+        PermissionManager.shared.openAccessibilitySettings()
     }
 
     /// Handles app becoming active

@@ -123,10 +123,7 @@ class AccessibilityTextInsertion {
                 let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
                 AXIsProcessTrustedWithOptions(options)
                 
-                // Also open the System Settings directly
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                    NSWorkspace.shared.open(url)
-                }
+                PermissionManager.shared.openAccessibilitySettings()
                 
                 print("🔐 Opening System Settings to enable Accessibility permissions")
             }

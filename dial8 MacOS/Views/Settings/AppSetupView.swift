@@ -49,11 +49,19 @@ struct AppSetupView: View {
                     if accessibilityPermissionGranted {
                         StatusRow(title: "Accessibility Permission", status: true)
                     } else {
-                        StatusActionRow(
-                            title: "Accessibility Permission",
-                            actionTitle: "Give Access",
-                            action: requestAccessibilityPermission
-                        )
+                        VStack(alignment: .leading, spacing: 6) {
+                            StatusActionRow(
+                                title: "Accessibility Permission",
+                                actionTitle: "Give Access",
+                                action: requestAccessibilityPermission
+                            )
+                            if let hint = PermissionManager.shared.accessibilityDeniedUserHint() {
+                                Text(hint)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
 
                     Divider()
@@ -127,10 +135,15 @@ struct AppSetupView: View {
         .onAppear {
             checkPermissions()
         }
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            checkPermissions()
+        }
+        #endif
         .alert(isPresented: $showAccessibilityPrompt) {
             Alert(
                 title: Text("Accessibility Permission"),
-                message: Text("Did you grant accessibility permission in System Preferences?"),
+                message: Text("Did you grant accessibility permission in System Settings?"),
                 primaryButton: .default(Text("Yes")) {
                     self.accessibilityPermissionGranted = true
                 },

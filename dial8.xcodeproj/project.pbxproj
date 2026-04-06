@@ -314,11 +314,11 @@
 					};
 					23C7616B2C92231E0094B283 = {
 						CreatedOnToolsVersion = 16.0;
-						TestTargetID = 23C7615B2C92231C0094B283;
+						TestTargetID = 2369467E2CB1F357002E8CBD;
 					};
 					23C761752C92231E0094B283 = {
 						CreatedOnToolsVersion = 16.0;
-						TestTargetID = 23C7615B2C92231C0094B283;
+						TestTargetID = 2369467E2CB1F357002E8CBD;
 					};
 				};
 			};

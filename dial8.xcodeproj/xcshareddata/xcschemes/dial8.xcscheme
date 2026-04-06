@@ -15,16 +15,16 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "23C7615B2C92231C0094B283"
-               BuildableName = "dial8.app"
-               BlueprintName = "dial8"
+               BlueprintIdentifier = "2369467E2CB1F357002E8CBD"
+               BuildableName = "Dial8.app"
+               BlueprintName = "dial8 MacOS"
                ReferencedContainer = "container:dial8.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
-      buildConfiguration = "Debug"
+      buildConfiguration = "Development"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
@@ -35,9 +35,9 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "23C7616B2C92231E0094B283"
-               BuildableName = "dial8Tests.xctest"
-               BlueprintName = "dial8Tests"
+               BlueprintIdentifier = "2369468E2CB1F359002E8CBD"
+               BuildableName = "dial8 MacOSTests.xctest"
+               BlueprintName = "dial8 MacOSTests"
                ReferencedContainer = "container:dial8.xcodeproj">
             </BuildableReference>
          </TestableReference>
@@ -46,16 +46,16 @@
             parallelizable = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "23C761752C92231E0094B283"
-               BuildableName = "dial8UITests.xctest"
-               BlueprintName = "dial8UITests"
+               BlueprintIdentifier = "236946982CB1F359002E8CBD"
+               BuildableName = "dial8 MacOSUITests.xctest"
+               BlueprintName = "dial8 MacOSUITests"
                ReferencedContainer = "container:dial8.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Debug"
+      buildConfiguration = "Development"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       enableAddressSanitizer = "YES"
@@ -76,27 +76,6 @@
             ReferencedContainer = "container:dial8.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "23C7615B2C92231C0094B283"
-            BuildableName = "dial8.app"
-            BlueprintName = "dial8"
-            ReferencedContainer = "container:dial8.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
-      <AdditionalOptions>
-         <AdditionalOption
-            key = "MallocScribble"
-            value = ""
-            isEnabled = "YES">
-         </AdditionalOption>
-         <AdditionalOption
-            key = "NSZombieEnabled"
-            value = "YES"
-            isEnabled = "YES">
-         </AdditionalOption>
-      </AdditionalOptions>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -108,24 +87,15 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "23C7615B2C92231C0094B283"
-            BuildableName = "dial8.app"
-            BlueprintName = "dial8"
+            BlueprintIdentifier = "2369467E2CB1F357002E8CBD"
+            BuildableName = "Dial8.app"
+            BlueprintName = "dial8 MacOS"
             ReferencedContainer = "container:dial8.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "23C7615B2C92231C0094B283"
-            BuildableName = "dial8.app"
-            BlueprintName = "dial8"
-            ReferencedContainer = "container:dial8.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
    </ProfileAction>
    <AnalyzeAction
-      buildConfiguration = "Debug">
+      buildConfiguration = "Development">
    </AnalyzeAction>
    <ArchiveAction
       buildConfiguration = "Release"

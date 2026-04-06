@@ -151,6 +151,7 @@ class AudioEngineService: ObservableObject {
         audioEngine?.stop()
         audioEngine = nil
         currentFormat = nil
+        audioConverter = nil
         
         // Wait before reconfiguring
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
@@ -161,9 +162,15 @@ class AudioEngineService: ObservableObject {
             
             // Wait for engine to be ready before restoring state
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                // Restore previous state if needed
+                // Always reset the pending flag regardless of engine state
+                // Previously this only reset on warmStandby, leaving it stuck
+                // if the engine failed to start or entered recovery
+                self.isConfigurationPending = false
+                
                 if self.engineState == .warmStandby {
-                    self.isConfigurationPending = false
+                    print("AudioEngineService: Graceful reconfiguration completed successfully")
+                } else {
+                    print("AudioEngineService: Graceful reconfiguration completed, engine state: \(self.engineState)")
                 }
             }
         }
@@ -306,8 +313,6 @@ class AudioEngineService: ObservableObject {
 
         // Stop engine if running
         if let engine = audioEngine, engine.isRunning {
-            // Remove any remaining taps from input node
-            engine.inputNode.removeTap(onBus: 0)
             engine.stop()
             print("AudioEngineService: Engine stopped")
         }
@@ -359,6 +364,12 @@ class AudioEngineService: ObservableObject {
     
     func reconfigureEngine() {
         print("AudioEngineService: Reconfiguring engine")
+
+        // Consume the user-initiated flag immediately to prevent spurious system
+        // notifications from triggering additional reconfigurations during this process.
+        // The isConfigurationPending flag then acts as the guard against duplicates.
+        AudioDeviceEnumerationService.shared.consumeUserInitiatedFlag()
+
         isConfigurationPending = true
 
         // Stop current engine
@@ -370,9 +381,6 @@ class AudioEngineService: ObservableObject {
             self.setupAudioEngine()
             _ = self.startEngine()
             self.isConfigurationPending = false
-
-            // Reset user-initiated flag as a safety measure after reconfiguration is complete
-            AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange = false
         }
     }
     

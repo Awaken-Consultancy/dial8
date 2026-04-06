@@ -212,6 +212,7 @@ class AudioManager: ObservableObject {
             
             // Stop all audio activity first
             self.speechDetectionService.stopSpeechDetection()
+            AudioLevelMonitor.shared.stopMonitoring()
             
             // Stop recording but process the audio to preserve it
             self.recordingService.stopRecording(withFinalProcessing: true) { [weak self] finalFileURL in
@@ -227,34 +228,29 @@ class AudioManager: ObservableObject {
                     )
                 }
                 
-                // Update UI state
-                DispatchQueue.main.async {
-                    self.isRecording = false
-                    self.hideNotchIndicator()
+                // Stop engine
+                self.audioEngineService.stopEngine()
+                
+                // Brief delay to let the system settle on the new device
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    // Update UI state
+                    DispatchQueue.main.async {
+                        self.isRecording = false
+                        self.hideNotchIndicator()
+                    }
                     
-                    // Wait for UI updates to complete
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        // Stop the engine after UI is updated
-                        self.audioEngineService.stopEngine()
-                        
-                        // Wait for engine to fully stop
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            // Setup new engine
-                            self.setupAudioEngine()
-                            
-                            // If we were recording, restore state and restart
-                            if wasRecording {
-                                print("🎙️ Restarting recording after device change...")
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    // In block mode, preserve accumulated text
-                                    let shouldPreserve = !self.isStreamingMode
-                                    self.startRecording(preserveAccumulatedText: shouldPreserve)
-                                }
-                            }
-                            
-                            self.isConfigurationPending = false
-                            print("✅ Audio engine reconfigured successfully")
-                        }
+                    // If we were recording, use the normal startRecording flow which handles
+                    // engine setup, permission checks, and all recording initialization.
+                    // If not recording, just set up a fresh engine.
+                    self.isConfigurationPending = false
+                    
+                    if wasRecording {
+                        print("🎙️ Restarting recording after device change...")
+                        // startRecording will set up the engine and begin recording
+                        self.startRecording(preserveAccumulatedText: !self.isStreamingMode)
+                    } else {
+                        self.setupAudioEngine()
+                        print("✅ Audio engine reconfigured successfully")
                     }
                 }
             }
@@ -666,6 +662,7 @@ class AudioManager: ObservableObject {
         self.audioEngineService.onAudioBuffer = { [weak self] buffer in
             AudioLevelMonitor.shared.processAudioBuffer(buffer)
             self?.recordingService.writeBuffer(buffer)
+            self?.speechDetectionService.processAudioBuffer(buffer)
         }
         
         // Start the engine

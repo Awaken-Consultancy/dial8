@@ -2,14 +2,42 @@ import Foundation
 import AVFoundation
 import Combine
 
+#if os(macOS)
+import AppKit
+#endif
+
 class AudioPermissionService: ObservableObject {
     // Published properties for permission states
     @Published var microphonePermissionGranted: Bool = false
     @Published var accessibilityPermissionGranted: Bool = false
+
+    #if os(macOS)
+    private var becomeActiveObserver: NSObjectProtocol?
+    #endif
     
     init() {
-        // Initial check of permissions
         checkPermissions()
+        #if os(macOS)
+        becomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.checkPermissions()
+            // TCC can lag slightly after toggling Accessibility in System Settings.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.checkPermissions()
+            }
+        }
+        #endif
+    }
+
+    deinit {
+        #if os(macOS)
+        if let observer = becomeActiveObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        #endif
     }
     
     // MARK: - Permission Checking

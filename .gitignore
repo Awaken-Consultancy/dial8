@@ -120,6 +120,9 @@ Temporary Items
 build_test/
 SourcePackages/
 
+# Local export / archive output (e.g. Dial8.app copied here for notarization)
+Release/
+
 # IDE
 .idea/
 .vscode/

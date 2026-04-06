@@ -76,24 +76,29 @@ class TextReplacementService: ObservableObject {
     
     /// Apply text replacements to the given text
     func applyReplacements(to text: String) -> String {
-        guard isEnabled && !replacements.isEmpty else { return text }
+        // Snapshot rules up front so concurrent edits (SwiftUI / @Published) cannot mutate the array
+        // while we iterate — that race can corrupt String storage and crash inside replacingOccurrences.
+        let enabled = isEnabled
+        let rulesSnapshot = replacements
+        guard enabled && !rulesSnapshot.isEmpty else { return text }
         
-        var processedText = text
-        let enabledReplacements = replacements.filter { $0.enabled }
-        
-        // Apply each replacement
-        for replacement in enabledReplacements {
-            // Apply each trigger text for this replacement
-            for triggerText in replacement.triggerTexts {
-                processedText = processedText.replacingOccurrences(
-                    of: triggerText, 
-                    with: replacement.replacement,
-                    options: .caseInsensitive
-                )
+        return autoreleasepool {
+            var processedText = text
+            
+            for replacement in rulesSnapshot where replacement.enabled {
+                for triggerText in replacement.triggerTexts {
+                    // Empty search string makes NSString insert between every unit and can explode memory / crash.
+                    guard !triggerText.isEmpty else { continue }
+                    processedText = processedText.replacingOccurrences(
+                        of: triggerText,
+                        with: replacement.replacement,
+                        options: .caseInsensitive
+                    )
+                }
             }
+            
+            return processedText
         }
-        
-        return processedText
     }
     
     /// Add a new replacement

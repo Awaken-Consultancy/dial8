@@ -4,6 +4,7 @@ import Combine
 @MainActor
 class AudioNotificationService: ObservableObject {
     // MARK: - Published Properties
+    /// True when the *selected* local speech engine (Parakeet or Whisper) is ready.
     @Published var whisperModelIsReady: Bool = false
     @Published var useLocalWhisperModel: Bool = true
     
@@ -44,10 +45,24 @@ class AudioNotificationService: ObservableObject {
             object: nil
         )
         
-        // Bind WhisperManager's isReady property
-        WhisperManager.shared.$isReady
-            .receive(on: DispatchQueue.main)
-            .assign(to: &$whisperModelIsReady)
+        // Reflect readiness of whichever engine is selected (Parakeet or Whisper)
+        let speechManager = SpeechRecognitionManager.shared
+        Publishers.CombineLatest3(
+            speechManager.$selectedEngineType,
+            WhisperManager.shared.$isReady,
+            speechManager.parakeetEngine.$isReady
+        )
+        .receive(on: DispatchQueue.main)
+        .sink { [weak self] engine, whisperReady, parakeetReady in
+            guard let self = self else { return }
+            switch engine {
+            case .whisper:
+                self.whisperModelIsReady = whisperReady
+            case .parakeet:
+                self.whisperModelIsReady = parakeetReady
+            }
+        }
+        .store(in: &cancellables)
     }
     
     // MARK: - Notification Handlers
