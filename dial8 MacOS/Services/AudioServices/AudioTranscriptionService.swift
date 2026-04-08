@@ -101,7 +101,7 @@ class AudioTranscriptionService: ObservableObject {
     @objc private func handleLanguageChanged(_ notification: Notification) {
         if let language = notification.userInfo?["language"] as? String {
             selectedLanguage = language
-            print("Language changed to: \(language)")
+            logger.info("Language changed to: \(language, privacy: .public)")
         }
     }
     
@@ -117,7 +117,7 @@ class AudioTranscriptionService: ObservableObject {
     }
     
     func handleTranscriptionResult(_ transcription: String, recordingStartTime: Date?, isTemporary: Bool = false) {
-        print("🔴 AudioTranscriptionService.handleTranscriptionResult called with: \"\(transcription)\"")
+        logger.debug("AudioTranscriptionService.handleTranscriptionResult called with: \"\(transcription, privacy: .public)\"")
         
         DispatchQueue.main.async {
             // If this is temporary accumulated text, store it locally
@@ -125,7 +125,7 @@ class AudioTranscriptionService: ObservableObject {
                 self.accumulatedText = transcription
             } else {
                 // Otherwise forward to the result handler
-                print("🔴 AudioTranscriptionService: Forwarding transcription to TranscriptionResultHandler")
+                self.logger.debug("AudioTranscriptionService: Forwarding transcription to TranscriptionResultHandler")
                 
                 // Forward to TranscriptionResultHandler with the start time
                 TranscriptionResultHandler.shared.handleTranscriptionResult(
@@ -137,7 +137,7 @@ class AudioTranscriptionService: ObservableObject {
                 // Don't clear accumulated text here - let AudioManager manage it
                 // self.accumulatedText = ""
                 
-                print("🔴 AudioTranscriptionService: Successfully forwarded transcription")
+                self.logger.debug("AudioTranscriptionService: Successfully forwarded transcription")
             }
         }
     }
@@ -194,7 +194,7 @@ class AudioTranscriptionService: ObservableObject {
             let audioData = try Data(contentsOf: fileURL)
             data.append(audioData)
         } catch {
-            print("Error reading audio file: \(error)")
+            logger.error("Error reading audio file: \(error.localizedDescription, privacy: .public)")
             completion()
             return
         }
@@ -203,7 +203,7 @@ class AudioTranscriptionService: ObservableObject {
 
         URLSession.shared.uploadTask(with: request, from: data) { data, response, error in
             if let error = error {
-                print("Error sending audio: \(error)")
+                self.logger.error("Error sending audio: \(error.localizedDescription, privacy: .public)")
                 completion()
                 return
             }
@@ -211,7 +211,7 @@ class AudioTranscriptionService: ObservableObject {
             if let data = data, let jsonString = String(data: data, encoding: .utf8) {
                 DispatchQueue.main.async {
                     let transcription = TranscriptionUtils.extractTranscription(from: jsonString)
-                    print("Transcription received: \(transcription)")
+                    self.logger.info("Transcription received: \(transcription, privacy: .public)")
 
                     self.handleTranscriptionResult(transcription, recordingStartTime: Date())
                 }

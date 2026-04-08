@@ -4,13 +4,17 @@ import AVFoundation
 import ApplicationServices  // For AXIsProcessTrusted()
 import Foundation  // Import Foundation for NotificationCenter
 import Cocoa  // For UI components like CursorLoaderIndicator
+import os
 
 // Define Recording Modes
 enum RecordingMode {
     case transcriptionOnly  // For individual transcription (dictation mode)
 }
 
+@MainActor
 class AudioManager: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioManager")
+
     // MARK: - Published Properties
     @Published private(set) var isRecording = false
     @Published var recordingMode: RecordingMode?
@@ -25,15 +29,14 @@ class AudioManager: ObservableObject {
     @Published var isStreamingMode: Bool = false {
         didSet {
             let mode = isStreamingMode ? "streaming" : "block"
-            print("🎙️ Transcription mode changed to: \(mode)")
+            self.logger.debug("🎙️ Transcription mode changed to: \(mode)")
             
             // Only save to UserDefaults if not initializing
             if !isInitializing {
                 UserDefaults.standard.set(isStreamingMode, forKey: "streamingModeEnabled")
-                UserDefaults.standard.synchronize()
-                print("💾 Saved transcription mode to UserDefaults: \(mode)")
+                self.logger.debug("💾 Saved transcription mode to UserDefaults: \(mode)")
             } else {
-                print("🔄 Skipping UserDefaults save during initialization")
+                self.logger.debug("🔄 Skipping UserDefaults save during initialization")
             }
             
             // Update TranscriptionResultHandler's block mode setting
@@ -61,7 +64,7 @@ class AudioManager: ObservableObject {
     @Published private(set) var currentInputDeviceName: String?
     
     // Dependencies
-    @ObservedObject var whisperManager = WhisperManager.shared
+    let whisperManager = WhisperManager.shared
     
     // Service layers
     private let audioHUDService: AudioHUDService
@@ -134,7 +137,7 @@ class AudioManager: ObservableObject {
         self.isInitializing = false
         
         let mode = self.isStreamingMode ? "streaming" : "block"
-        print("🎙️ Loaded transcription mode from UserDefaults: \(mode)")
+        self.logger.debug("🎙️ Loaded transcription mode from UserDefaults: \(mode)")
         
         isInitialized = true
         
@@ -162,12 +165,12 @@ class AudioManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .assign(to: &$useLocalWhisperModel)
             
-        // Setup callbacks
-        audioNotificationService.onLanguageChanged = { [weak self] in
+        // Setup callbacks (no `self` use; omit `[weak self]` to avoid unused-capture warnings)
+        audioNotificationService.onLanguageChanged = {
             // Language changes are handled in the AudioTranscriptionService
         }
         
-        audioNotificationService.onUseLocalWhisperModelChanged = { [weak self] newValue in
+        audioNotificationService.onUseLocalWhisperModelChanged = { _ in
             // Model changes are already handled in the notification service itself
         }
     }
@@ -220,7 +223,7 @@ class AudioManager: ObservableObject {
                 
                 // If there's audio to preserve, add it to the processing queue
                 if let finalFileURL = finalFileURL {
-                    print("📝 Preserving audio from before device switch")
+                    self.logger.debug("📝 Preserving audio from before device switch")
                     let timestamp = self.speechDetectionService.getLastSpeechTime() ?? Date()
                     self.audioProcessingQueueService.addToProcessingQueue(
                         audioURL: finalFileURL,
@@ -245,12 +248,12 @@ class AudioManager: ObservableObject {
                     self.isConfigurationPending = false
                     
                     if wasRecording {
-                        print("🎙️ Restarting recording after device change...")
+                        self.logger.debug("🎙️ Restarting recording after device change...")
                         // startRecording will set up the engine and begin recording
                         self.startRecording(preserveAccumulatedText: !self.isStreamingMode)
                     } else {
                         self.setupAudioEngine()
-                        print("✅ Audio engine reconfigured successfully")
+                        self.logger.debug("✅ Audio engine reconfigured successfully")
                     }
                 }
             }
@@ -275,9 +278,9 @@ class AudioManager: ObservableObject {
             guard let self = self, self.isRecording else { return }
             
             if self.audioEngineService.engineState == AudioEngineState.inactive {
-                print("Audio engine is not running. Reinitializing...")
+                self.logger.debug("Audio engine is not running. Reinitializing...")
                 self.setupAudioEngine()
-                self.audioEngineService.startEngine()
+                _ = self.audioEngineService.startEngine()
             }
         }
     }
@@ -286,13 +289,13 @@ class AudioManager: ObservableObject {
         // Configure recovery service callbacks
         audioRecoveryService.onRecoveryStarted = { [weak self] in
             guard let self = self else { return }
-            print("Audio recovery process has started...")
+            self.logger.debug("Audio recovery process has started...")
             // Optionally show some UI feedback
         }
         
         audioRecoveryService.onRecoverySucceeded = { [weak self] in
             guard let self = self else { return }
-            print("Audio recovery was successful!")
+            self.logger.debug("Audio recovery was successful!")
             
             // Reinitialize streaming if required
             if self.isRecording {
@@ -305,7 +308,7 @@ class AudioManager: ObservableObject {
         
         audioRecoveryService.onRecoveryFailed = { [weak self] in
             guard let self = self else { return }
-            print("Audio recovery failed after all attempts.")
+            self.logger.debug("Audio recovery failed after all attempts.")
             
             // Handle fatal failure - possibly reset the entire audio stack
             self.resetAudioComponents()
@@ -321,7 +324,7 @@ class AudioManager: ObservableObject {
         // Authentication check removed
 
         guard !isRecording else {
-            print("Recording is already in progress.")
+            self.logger.debug("Recording is already in progress.")
             return
         }
 
@@ -329,7 +332,7 @@ class AudioManager: ObservableObject {
         isStoppingRecording = false
         
         let mode = isStreamingMode ? "streaming" : "block"
-        print("🎙️ Starting recording in \(mode) mode")
+        self.logger.debug("🎙️ Starting recording in \(mode) mode")
         
         // Reset text insertion state for new recording (unless preserving accumulated text)
         if !preserveAccumulatedText {
@@ -337,28 +340,26 @@ class AudioManager: ObservableObject {
             audioTranscriptionService.clearAccumulatedText()
             TranscriptionResultHandler.shared.clearAccumulatedText()
         } else {
-            print("📝 Preserving accumulated text during recording restart")
+            self.logger.debug("📝 Preserving accumulated text during recording restart")
             // Don't reset TextInsertionService to preserve cursor position
         }
         
         // Set loading state and show HUD immediately
         isAudioSetupInProgress = true
-        print("🔄 Audio setup in progress: true")
+        self.logger.debug("🔄 Audio setup in progress: true")
         
         // Show the HUD immediately with loading state
         DispatchQueue.main.async {
             // Show HUD immediately while audio engine is being set up
             self.isRecording = true
             self.showNotchIndicator()
-            print("🎙️ HUD shown with isAudioSetupInProgress: \(self.isAudioSetupInProgress)")
+            self.logger.debug("🎙️ HUD shown with isAudioSetupInProgress: \(self.isAudioSetupInProgress)")
         }
         
-        // Get initial device name but don't show notification
-        DispatchQueue.global().async { [weak self] in
-            let deviceName = self?.audioSessionService.getCurrentInputDeviceName()
-            DispatchQueue.main.async {
-                self?.currentInputDeviceName = deviceName
-            }
+        // Resolve device name on the main actor (audioSessionService is main-actor-isolated)
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.currentInputDeviceName = self.audioSessionService.getCurrentInputDeviceName()
         }
         
         // Ensure microphone permission is granted first
@@ -373,7 +374,7 @@ class AudioManager: ObservableObject {
                     self.setupAudioEngineForRecording()
                 }
             } else {
-                print("Microphone access not granted.")
+                self.logger.debug("Microphone access not granted.")
                 DispatchQueue.main.async {
                     self.isRecording = false
                     self.isAudioSetupInProgress = false
@@ -388,7 +389,7 @@ class AudioManager: ObservableObject {
 
         guard isRecording else { return }
         
-        print("⏹️ Stopping recording and processing audio...")
+        self.logger.debug("⏹️ Stopping recording and processing audio...")
         
         // For regular audio recording, proceed with normal workflow
         
@@ -397,12 +398,12 @@ class AudioManager: ObservableObject {
         
         // For block mode, we need to ensure all audio is processed before fully stopping
         if !isStreamingMode {
-            print("📝 Block mode: Ensuring all audio is processed before stopping")
+            self.logger.debug("📝 Block mode: Ensuring all audio is processed before stopping")
             
             // First, force creation of a new segment to capture any current audio
             // This must happen BEFORE we stop speech detection or mark recording as false
             if let currentSegmentURL = recordingService.startNewAudioSegment() {
-                print("📝 Block mode: Adding current segment to processing queue")
+                self.logger.debug("📝 Block mode: Adding current segment to processing queue")
                 let segmentTimestamp = self.speechDetectionService.getLastSpeechTime() ?? Date()
                 audioProcessingQueueService.addToProcessingQueue(
                     audioURL: currentSegmentURL,
@@ -442,7 +443,7 @@ class AudioManager: ObservableObject {
             
             // If there's a final file, add it to the processing queue
             if let finalFileURL = finalFileURL {
-                print("📝 Adding final audio segment to processing queue")
+                self.logger.debug("📝 Adding final audio segment to processing queue")
                 let finalTimestamp = self.speechDetectionService.getLastSpeechTime() ?? Date()
                 self.audioProcessingQueueService.addToProcessingQueue(
                     audioURL: finalFileURL,
@@ -464,7 +465,7 @@ class AudioManager: ObservableObject {
             
             // Clean up audio engine
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                print("🔇 Stopping audio engine...")
+                self.logger.debug("🔇 Stopping audio engine...")
                 self.audioEngineService.stopEngine()
                 
                 // Reset all state
@@ -481,7 +482,7 @@ class AudioManager: ObservableObject {
     func stopRecordingAndDiscardAudio() {
         guard isRecording else { return }
         
-        print("⏹️ Stopping recording and discarding audio...")
+        self.logger.debug("⏹️ Stopping recording and discarding audio...")
         
         // Ensure audio is unducked
         audioDuckingService.unduck()
@@ -507,7 +508,7 @@ class AudioManager: ObservableObject {
             
             // Clean up audio engine
             DispatchQueue.main.async {
-                print("🔇 Stopping audio engine...")
+                self.logger.debug("🔇 Stopping audio engine...")
                 self.audioEngineService.stopEngine()
                 
                 // Reset all state
@@ -546,7 +547,7 @@ class AudioManager: ObservableObject {
     }
     
     func resetAudioComponents() {
-        print("Resetting audio components")
+        self.logger.debug("Resetting audio components")
         audioEngineService.stopEngine()
         setupAudioEngine()
         isRecording = false
@@ -574,7 +575,7 @@ class AudioManager: ObservableObject {
     // MARK: - Audio Engine Setup
     
     private func setupAudioEngineForRecording() {
-        print("AudioManager: Setting up audio engine for recording")
+        self.logger.debug("AudioManager: Setting up audio engine for recording")
 
         // Setup the engine
         setupAudioEngine()
@@ -586,7 +587,7 @@ class AudioManager: ObservableObject {
     private func checkEngineReadyAndStartRecording(attempts: Int = 0) {
         // Check if engine is ready
         if audioEngineService.engineState != .inactive && audioEngineService.audioEngine != nil {
-            print("AudioManager: Audio engine is ready, starting recording components")
+            self.logger.debug("AudioManager: Audio engine is ready, starting recording components")
             
             // Engine is ready, start recording components
             DispatchQueue.main.async { [weak self] in
@@ -606,7 +607,7 @@ class AudioManager: ObservableObject {
                 
                 // Audio setup is now complete
                 self.isAudioSetupInProgress = false
-                print("🔄 Audio setup complete - transitioning to recording")
+                self.logger.debug("🔄 Audio setup complete - transitioning to recording")
                 
                 // Play ready sound with a small delay to avoid overlap with activation sound
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -623,13 +624,13 @@ class AudioManager: ObservableObject {
             }
         } else if attempts < 10 { // Max 1 second wait (10 * 100ms)
             // Engine not ready yet, check again in 100ms
-            print("AudioManager: Engine not ready yet, checking again... (attempt \(attempts + 1))")
+            self.logger.debug("AudioManager: Engine not ready yet, checking again... (attempt \(attempts + 1))")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 self?.checkEngineReadyAndStartRecording(attempts: attempts + 1)
             }
         } else {
             // Timeout - engine failed to start
-            print("AudioManager: Engine failed to start after timeout")
+            self.logger.debug("AudioManager: Engine failed to start after timeout")
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.isRecording = false
@@ -642,11 +643,11 @@ class AudioManager: ObservableObject {
     }
     
     private func setupAudioEngine() {
-        print("AudioManager: Setting up audio engine - START")
+        self.logger.debug("AudioManager: Setting up audio engine - START")
         
         // Prevent multiple simultaneous setups
         guard !isConfigurationPending else {
-            print("Setup already in progress, skipping...")
+            self.logger.debug("Setup already in progress, skipping...")
             return
         }
         
@@ -667,9 +668,9 @@ class AudioManager: ObservableObject {
         
         // Start the engine
         if self.audioEngineService.startEngine() {
-            print("AudioManager: Audio engine started successfully")
+            self.logger.debug("AudioManager: Audio engine started successfully")
         } else {
-            print("AudioManager: Failed to start audio engine")
+            self.logger.debug("AudioManager: Failed to start audio engine")
             // Use recovery service instead of direct recovery
             self.audioRecoveryService.attemptRecovery()
         }
@@ -690,7 +691,7 @@ class AudioManager: ObservableObject {
             
             // Skip speech detection updates if we're in the process of stopping
             if self.isStoppingRecording {
-                print("🚫 Speech detected while stopping recording - ignoring")
+                self.logger.debug("🚫 Speech detected while stopping recording - ignoring")
                 return
             }
         }
@@ -723,7 +724,7 @@ class AudioManager: ObservableObject {
         engineStartupRetryCount += 1
         
         if engineStartupRetryCount < maxEngineStartupRetries {
-            print("AudioManager: Engine startup failed. Retrying... (attempt \(engineStartupRetryCount + 1) of \(maxEngineStartupRetries))")
+            self.logger.debug("AudioManager: Engine startup failed. Retrying... (attempt \(self.engineStartupRetryCount + 1) of \(self.maxEngineStartupRetries))")
             
             // Wait a bit before retrying to give the system time to recover
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -733,7 +734,7 @@ class AudioManager: ObservableObject {
             }
         } else {
             // Max retries reached, give up
-            print("AudioManager: Engine startup failed after \(maxEngineStartupRetries) attempts. Giving up.")
+            self.logger.debug("AudioManager: Engine startup failed after \(self.maxEngineStartupRetries) attempts. Giving up.")
             engineStartupRetryCount = 0 // Reset for next time
             hideNotchIndicator()
         }
@@ -741,7 +742,7 @@ class AudioManager: ObservableObject {
     
     
     private func showCursorLoader() {
-        print("showCursorLoader called")
+        self.logger.debug("showCursorLoader called")
         DispatchQueue.main.async {
             if self.cursorLoaderIndicator == nil {
                 let mouseLocation = NSEvent.mouseLocation
@@ -752,37 +753,32 @@ class AudioManager: ObservableObject {
     }
 
     private func hideCursorLoader() {
-        print("hideCursorLoader called")
+        self.logger.debug("hideCursorLoader called")
         DispatchQueue.main.async {
             self.cursorLoaderIndicator?.hide()
             self.cursorLoaderIndicator = nil
-            print("All cursor loader indicators hidden and released")
+            self.logger.debug("All cursor loader indicators hidden and released")
         }
     }
     
     // MARK: - Queue Monitoring for Block Mode
     
     private func monitorQueueAndFlushWhenComplete() {
-        // Check queue status every 100ms
+        // Check queue status every 100ms (hop to MainActor — timer closure is Sendable)
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
-            guard let self = self else {
-                timer.invalidate()
-                return
-            }
-            
-            // Check if the processing queue is empty
-            if self.audioProcessingQueueService.queueLength == 0 {
-                print("📝 Block mode: Processing queue is empty, flushing accumulated text")
-                
-                // Stop the timer
-                timer.invalidate()
-                
-                // Flush the accumulated text
-                DispatchQueue.main.async {
-                    TranscriptionResultHandler.shared.flushAccumulatedText()
+            Task { @MainActor [weak self] in
+                guard let self = self else {
+                    timer.invalidate()
+                    return
                 }
-            } else {
-                print("📝 Block mode: Waiting for queue to process \(self.audioProcessingQueueService.queueLength) items")
+                let queueLen = self.audioProcessingQueueService.queueLength
+                if queueLen == 0 {
+                    self.logger.debug("📝 Block mode: Processing queue is empty, flushing accumulated text")
+                    timer.invalidate()
+                    TranscriptionResultHandler.shared.flushAccumulatedText()
+                } else {
+                    self.logger.debug("📝 Block mode: Waiting for queue to process \(queueLen) items")
+                }
             }
         }
     }

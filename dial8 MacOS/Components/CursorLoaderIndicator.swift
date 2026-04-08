@@ -50,16 +50,15 @@ class CursorLoaderIndicatorWindowController: NSWindowController {
 
 private struct LoadingDotsView: View {
     @State private var dotCount = 1
-    
-    let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
-    
     var body: some View {
         Text(String(repeating: ".", count: dotCount))
             .foregroundColor(.gray)
             .font(.system(size: 24, weight: .bold))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onReceive(timer) { _ in
-                dotCount = dotCount % 3 + 1
+            .task {
+                for await _ in Timer.publish(every: 0.25, on: .main, in: .common).autoconnect().values {
+                    dotCount = dotCount % 3 + 1
+                }
             }
     }
 }

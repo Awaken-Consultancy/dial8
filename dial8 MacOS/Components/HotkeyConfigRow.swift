@@ -79,7 +79,7 @@ struct HotkeyConfigRow: View {
         .onAppear {
             isLearning = (hotkeyManager.currentLearningConfig?.id == configuration.id)
         }
-        .onChange(of: hotkeyManager.currentLearningConfig) { config in
+        .onChange(of: hotkeyManager.currentLearningConfig) { _, config in
             isLearning = (config?.id == configuration.id)
         }
     }

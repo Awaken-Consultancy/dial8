@@ -328,7 +328,6 @@ struct UnifiedSettingsView: View {
                 Button(action: {
                     // Reset the hotkey test completion state
                     UserDefaults.standard.set(false, forKey: "fnKeySetupComplete")
-                    UserDefaults.standard.synchronize()
                 }) {
                     Label("Reset Hotkey Test", systemImage: "keyboard.badge.ellipsis")
                 }

@@ -1,5 +1,8 @@
 import Foundation
 import CoreGraphics
+import os
+private let logger = Logger(subsystem: "com.dial8", category: "HotkeyConfiguration")
+
 
 struct HotkeyConfiguration: Identifiable, Codable, Equatable {
     let id: String
@@ -214,7 +217,7 @@ enum KeyCodeMap {
         case 115: return "Home"
         case 119: return "End"
         default:
-            print("Unrecognized key code: \(keyCode)")
+            logger.debug("Unrecognized key code: \(keyCode)")
             return "Key \(keyCode)"
         }
     }

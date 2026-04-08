@@ -1,8 +1,10 @@
 import Foundation
+import os
 
 /// Responsible for text cleaning, formatting, and overlap detection
 class TextFormatter {
     
+    private let logger = Logger(subsystem: "com.dial8", category: "TextFormatter")
     // Track segment history for overlap removal
     private var trackedSegments = [String]()
     private var maxTrackedSegments = 5 // Only track the last 5 segments
@@ -12,7 +14,7 @@ class TextFormatter {
     /// Resets the state of tracked segments
     func resetSegmentTracking() {
         trackedSegments = []
-        print("🧹 Reset segment tracking state")
+        logger.debug("🧹 Reset segment tracking state")
     }
     
     /// Detects and removes overlapping text between the new segment and previously stored segments
@@ -40,7 +42,7 @@ class TextFormatter {
             
             // First check for exact duplication
             if previousSegment == cleanedText {
-                print("🔍 Detected exact duplicate segment, removing")
+                logger.debug("🔍 Detected exact duplicate segment, removing")
                 cleanedText = ""
                 break
             }
@@ -48,14 +50,14 @@ class TextFormatter {
             // Check for near duplicate (similarity > 90%)
             let similarity = calculateTextSimilarity(previousSegment, cleanedText)
             if similarity > 0.9 {
-                print("🔍 Detected near duplicate segment (similarity: \(similarity)), removing")
+                logger.debug("🔍 Detected near duplicate segment (similarity: \(similarity)), removing")
                 cleanedText = ""
                 break
             }
             
             // Check if the new text is a substring of the previous segment
             if previousSegment.contains(cleanedText) {
-                print("🔍 New text is completely contained in previous segment, removing")
+                logger.debug("🔍 New text is completely contained in previous segment, removing")
                 cleanedText = ""
                 break
             }
@@ -64,7 +66,7 @@ class TextFormatter {
             if cleanedText.contains(previousSegment) {
                 // Remove the overlapping part (previous segment) from the new text
                 cleanedText = cleanedText.replacingOccurrences(of: previousSegment, with: "")
-                print("🔍 Previous segment contained in new text, removing overlapping part")
+                logger.debug("🔍 Previous segment contained in new text, removing overlapping part")
             }
             
             // Check for substantial overlap (where the end of the previous segment overlaps with the start of the new segment)
@@ -88,7 +90,7 @@ class TextFormatter {
                     if endPart == startPart {
                         // Remove the overlapping part from the new text
                         cleanedText = String(cleanedText[startIndex...])
-                        print("🔍 Detected \(overlapSize) character overlap, removing")
+                        logger.debug("🔍 Detected \(overlapSize) character overlap, removing")
                         break
                     }
                 }
@@ -176,7 +178,7 @@ class TextFormatter {
             // Handle capitalization - capitalize the first letter if it's the start of a sentence
             if isNewRecordingSession && !formattedText.isEmpty {
                 formattedText = formattedText.prefix(1).capitalized + formattedText.dropFirst()
-                print("💬 Capitalized first letter (new recording session): \"\(formattedText)\"")
+                logger.debug("💬 Capitalized first letter (new recording session): \"\(formattedText)\"")
             } else if !isNewRecordingSession && !formattedText.isEmpty {
                 // Improve capitalization logic by checking if the previous text ended with punctuation that ends a sentence
                 // First, remove any trailing spaces from lastInsertedText to simplify our check
@@ -203,17 +205,17 @@ class TextFormatter {
                 
                 if shouldCapitalize && !isCommonCapitalizedWord {
                     formattedText = formattedText.prefix(1).capitalized + formattedText.dropFirst()
-                    print("💬 Capitalized first letter: \"\(formattedText)\" (previous text ended with sentence punctuation)")
+                    logger.debug("💬 Capitalized first letter: \"\(formattedText)\" (previous text ended with sentence punctuation)")
                 } else if isCommonCapitalizedWord {
                     // Preserve capitalization for words like "I"
-                    print("💬 Preserved capitalization for common word: \"\(firstWord)\"")
+                    logger.debug("💬 Preserved capitalization for common word: \"\(firstWord)\"")
                 } else {
                     // Force lowercase for the first letter unless it's at the start of a sentence
                     if !formattedText.isEmpty && formattedText.prefix(1).uppercased() == formattedText.prefix(1) {
                         formattedText = formattedText.prefix(1).lowercased() + formattedText.dropFirst()
-                        print("💬 Forced lowercase for first letter: \"\(formattedText)\" (previous: \"\(trimmedLastText)\")")
+                        logger.debug("💬 Forced lowercase for first letter: \"\(formattedText)\" (previous: \"\(trimmedLastText)\")")
                     } else {
-                        print("💬 Keeping original case: \"\(formattedText)\" (previous: \"\(trimmedLastText)\")")
+                        logger.debug("💬 Keeping original case: \"\(formattedText)\" (previous: \"\(trimmedLastText)\")")
                     }
                 }
             }

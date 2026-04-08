@@ -30,33 +30,6 @@ class AuthenticationManager: NSObject, ObservableObject {
         logger.info("AuthenticationManager initialized (account feature disabled)")
     }
 
-    // MARK: - No-op Methods (Account feature removed)
-
-    func signInWithGoogle(presentationAnchor: Any) {
-        // No-op - account feature removed
-        logger.info("signInWithGoogle called but account feature is disabled")
-    }
-
-    public func handleAuthRedirect(url: URL) {
-        // No-op - account feature removed
-        logger.info("handleAuthRedirect called but account feature is disabled")
-    }
-
-    func signOut() {
-        // No-op - account feature removed
-        logger.info("signOut called but account feature is disabled")
-    }
-
-    func completeFirstTimeAuthentication() {
-        self.isFirstTimeUser = false
-        UserDefaults.standard.hasCompletedOnboarding = true
-        logger.info("First-time authentication completed")
-    }
-
-    func ensureUserDataLoaded() async {
-        // No-op - account feature removed
-    }
-
     // MARK: - Computed Properties
 
     var isSubscriptionActive: Bool {

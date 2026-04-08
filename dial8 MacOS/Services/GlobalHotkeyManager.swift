@@ -5,22 +5,26 @@ import SwiftUI
 import Combine
 import ApplicationServices
 import Carbon
+import os
 
 // Removed HotkeyBehavior enum - now using separate hotkeys for push-to-talk and toggle modes
 
 class GlobalHotkeyManager: ObservableObject {
     // MARK: - Properties
+    
+    private let logger = Logger(subsystem: "com.dial8", category: "GlobalHotkeyManager")
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var cancellables = Set<AnyCancellable>()
 
     @Published var isRecording = false
     
     // Track if text overlay is currently showing - Now handled by hudState computed property
     
-    @ObservedObject var windowManager: WindowManager
+    let windowManager: WindowManager
     private let statusBarController: StatusBarController
-    @ObservedObject var audioManager: AudioManager
+    let audioManager: AudioManager
 
     private var previousFlags: CGEventFlags?
     private var currentKeyCombo: KeyCombo?
@@ -98,6 +102,22 @@ class GlobalHotkeyManager: ObservableObject {
     private var transitionTimeoutTimer: Timer?
     private let transitionTimeout: TimeInterval = 0.5 // 500ms timeout for transitions
 
+    /// `AudioManager` is `@MainActor`; event-tap paths are not. Hop to the main actor explicitly.
+    private func performOnMain(_ body: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            body()
+        }
+    }
+
+    private func startTranscriptionRecordingOnMain() {
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            self.recordingMode = .transcriptionOnly
+            self.audioManager.setRecordingMode(self.recordingMode)
+            self.audioManager.startRecording()
+        }
+    }
+
     // MARK: - Initialization
 
     init(windowManager: WindowManager,
@@ -117,11 +137,17 @@ class GlobalHotkeyManager: ObservableObject {
         // Start monitoring the event tap
         startEventTapMonitoring()
 
-        // Observe changes in recording status
-        self.audioManager.$isRecording
-            .receive(on: DispatchQueue.main)
-            .assign(to: &$isRecording)
+        // Observe changes in recording status (`AudioManager` is `@MainActor`)
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            self.audioManager.$isRecording
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] value in
+                    self?.isRecording = value
+                }
+                .store(in: &self.cancellables)
         }
+    }
 
     deinit {
         stopEventTapMonitoring()
@@ -239,9 +265,6 @@ class GlobalHotkeyManager: ObservableObject {
         
         // Handle flag changes (modifier keys)
         if type == .flagsChanged {
-            let flagsRaw: UInt64 = flags.rawValue
-            
-            
             // Now check for configured hotkeys 
             let lastFlags = previousFlags ?? CGEventFlags(rawValue: 0)
             let newlyPressedFlags = flags.subtracting(lastFlags)
@@ -257,14 +280,14 @@ class GlobalHotkeyManager: ObservableObject {
                     if config.action == .pushToTalk {
                         // Check if we're already recording in toggle mode (second tap to stop)
                         if isRecording && isToggleMode {
-                            print("🎙️ Toggle Mode: Second tap, stopping recording")
+                            logger.debug("Toggle Mode: Second tap, stopping recording")
                             stopRecordingAndSendAudio()
                             isToggleMode = false
                             isHotkeyPressed = false
                             pushToTalkKeyCombo = nil
                         } else if isRecording && isRecordingLocked {
                             // Option pressed while locked - stop recording
-                            print("🛑 Push-to-talk: Option pressed while locked, stopping recording")
+                            logger.debug("Push-to-talk: Option pressed while locked, stopping recording")
                             stopRecordingAndSendAudio()
                             isRecordingLocked = false
                             isHotkeyPressed = false
@@ -276,22 +299,23 @@ class GlobalHotkeyManager: ObservableObject {
                             // For Strict Toggle, we toggle state immediately
                             if triggerMode == .toggle {
                                 if isRecording {
-                                    print("🎙️ Toggle Mode: Stopping recording")
+                                    logger.debug("Toggle Mode: Stopping recording")
                                     stopRecordingAndSendAudio()
                                 } else {
-                                    print("🎙️ Toggle Mode: Starting recording")
-                                    recordingMode = .transcriptionOnly
-                                    audioManager.setRecordingMode(recordingMode)
-                                    audioManager.startRecording()
-                                    isToggleMode = true
+                                    logger.debug("Toggle Mode: Starting recording")
+                                    performOnMain { [weak self] in
+                                        guard let self = self else { return }
+                                        self.recordingMode = .transcriptionOnly
+                                        self.audioManager.setRecordingMode(self.recordingMode)
+                                        self.audioManager.startRecording()
+                                        self.isToggleMode = true
+                                    }
                                 }
                             } else {
                                 // For Hybrid or Push-to-Talk, always start recording (assume PTT first)
                                 if !isRecording {
-                                    print("🎙️ Push-to-talk/Hybrid: Key pressed, starting recording")
-                                    recordingMode = .transcriptionOnly
-                                    audioManager.setRecordingMode(recordingMode)
-                                    audioManager.startRecording()
+                                    logger.debug("Push-to-talk/Hybrid: Key pressed, starting recording")
+                                    startTranscriptionRecordingOnMain()
                                 }
                                 isToggleMode = false
                             }
@@ -344,15 +368,15 @@ class GlobalHotkeyManager: ObservableObject {
                             if triggerMode == .hybrid && pressDuration < tapThreshold {
                                 // TAP detected - enter toggle mode, keep recording
                                 isToggleMode = true
-                                print("🎙️ Tap detected (\(String(format: "%.0f", pressDuration * 1000))ms) - toggle mode active")
+                                logger.debug("Tap detected (\(pressDuration * 1000)ms) - toggle mode active")
                                 // Don't stop recording - user will tap again to stop
                             } else if isRecording && !isRecordingLocked && !isToggleMode {
                                 // HOLD detected OR STRICT PTT - stop recording (push-to-talk behavior)
-                                print("🎙️ Hold released (\(String(format: "%.0f", pressDuration * 1000))ms) - stopping recording")
+                                logger.debug("Hold released (\(pressDuration * 1000)ms) - stopping recording")
                                 stopRecordingAndSendAudio()
                                 pushToTalkKeyCombo = nil
                             } else if isRecording && isRecordingLocked {
-                                print("🔒 Push-to-talk: Option released but recording is locked, continuing...")
+                                logger.debug("Push-to-talk: Option released but recording is locked, continuing...")
                             }
                         }
                     }
@@ -427,11 +451,6 @@ class GlobalHotkeyManager: ObservableObject {
             return nil
         }
         
-        // Skip regular hotkey handling if we've already directly handled keys
-        if directlyHandledKey {
-            return Unmanaged.passRetained(event)
-        }
-        
         // Handle space bar during push-to-talk recording
         if isRecording && keyCode == 49 { // 49 is space bar
             // Check if Command is pressed - if so, let the system handle it (for Spotlight, etc.)
@@ -442,7 +461,7 @@ class GlobalHotkeyManager: ObservableObject {
             if type == .keyDown && !isRecordingLocked {
                 // Space pressed while recording - lock the recording
                 isRecordingLocked = true
-                print("🔒 Push-to-talk: Recording locked - press Option to stop")
+                logger.debug("Push-to-talk: Recording locked - press Option to stop")
                 // Post notification to update UI if needed
                 NotificationCenter.default.post(name: Notification.Name("RecordingLockedStateChanged"), object: nil, userInfo: ["isLocked": true])
                 return nil // Consume the space bar event only when locking
@@ -463,7 +482,7 @@ class GlobalHotkeyManager: ObservableObject {
                     // Check if we're in a locked recording session
                     if isRecording && isRecordingLocked {
                         // Hotkey pressed while locked - stop recording
-                        print("🛑 Push-to-talk: Hotkey pressed while locked, stopping recording")
+                        logger.debug("Push-to-talk: Hotkey pressed while locked, stopping recording")
                         stopRecordingAndSendAudio()
                         isRecordingLocked = false
                         isHotkeyPressed = false
@@ -474,10 +493,8 @@ class GlobalHotkeyManager: ObservableObject {
                         pushToTalkKeyCombo = KeyCombo(keyCode: keyCode, modifiers: flags.rawValue)
                         
                         if !isRecording {
-                            print("🎙️ Push-to-talk: Key pressed, starting recording")
-                            recordingMode = .transcriptionOnly
-                            audioManager.setRecordingMode(recordingMode)
-                            audioManager.startRecording()
+                            logger.debug("Push-to-talk: Key pressed, starting recording")
+                            startTranscriptionRecordingOnMain()
                         }
                     }
                 } else {
@@ -494,11 +511,11 @@ class GlobalHotkeyManager: ObservableObject {
                 isHotkeyPressed = false
                 
                 if isRecording && !isRecordingLocked {
-                    print("🎙️ Push-to-talk: Key released, stopping recording")
+                    logger.debug("Push-to-talk: Key released, stopping recording")
                     stopRecordingAndSendAudio()
                     pushToTalkKeyCombo = nil
                 } else if isRecording && isRecordingLocked {
-                    print("🔒 Push-to-talk: Key released but recording is locked, continuing...")
+                    logger.debug("Push-to-talk: Key released but recording is locked, continuing...")
                 }
             }
         }
@@ -507,20 +524,20 @@ class GlobalHotkeyManager: ObservableObject {
     }
 
     private func handleHotkeyAction(_ action: HotkeyAction) {
-        print("🎯 Handling hotkey action: \(action)")
+        logger.debug("Handling hotkey action: \(action.rawValue)")
         
         switch action {
         case .toggleMode:
             // Toggle mode - press to start/stop recording
             if isRecording {
-                print("🎙️ Toggle Mode: Already recording, stopping recording")
+                logger.debug("Toggle Mode: Already recording, stopping recording")
                 stopRecordingAndSendAudio()
                 return
             }
             
             // If any HUD is showing, first try to dismiss it
             if hudState != .hidden && hudState != .transitioning {
-                print("🎯 HUD is showing when toggle hotkey pressed, dismissing it")
+                logger.debug("HUD is showing when toggle hotkey pressed, dismissing it")
                 
                 switch hudState {
                 case .showingOverlay:
@@ -543,19 +560,17 @@ class GlobalHotkeyManager: ObservableObject {
             }
             
             // Start recording in toggle mode
-            print("🎙️ Toggle Mode: Starting recording")
-            recordingMode = .transcriptionOnly
-            audioManager.setRecordingMode(recordingMode)
-            audioManager.startRecording()
+            logger.debug("Toggle Mode: Starting recording")
+            startTranscriptionRecordingOnMain()
             
         case .pushToTalk:
             // Push-to-talk mode - handled in the keyDown/keyUp events
-            print("🎙️ Push-to-talk action detected")
+            logger.debug("Push-to-talk action detected")
             // The actual push-to-talk behavior is handled in the event handling code
             
         case .transcribe:
             // Legacy support - map to toggle mode behavior
-            print("⚠️ Legacy transcribe action detected, using toggle mode behavior")
+            logger.warning("Legacy transcribe action detected, using toggle mode behavior")
             handleHotkeyAction(.toggleMode)
         }
     }
@@ -577,49 +592,52 @@ class GlobalHotkeyManager: ObservableObject {
     }
 
     private func stopRecordingAndSendAudio() {
-        guard isRecording else { return }
-        
-        print("🎙️ Stopping transcription")
-        isRecording = false
-        audioManager.stopRecordingAndSendAudio()
-        
-        // Reset recording mode
-        recordingMode = nil
-        audioManager.recordingMode = nil
-        
-        // Reset lock state
-        if isRecordingLocked {
-            isRecordingLocked = false
-            NotificationCenter.default.post(name: Notification.Name("RecordingLockedStateChanged"), object: nil, userInfo: ["isLocked": false])
-        }
+        performOnMain { [weak self] in
+            guard let self = self else { return }
+            guard self.isRecording else { return }
+            
+            self.logger.debug("Stopping transcription")
+            self.isRecording = false
+            self.audioManager.stopRecordingAndSendAudio()
+            
+            // Reset recording mode
+            self.recordingMode = nil
+            self.audioManager.recordingMode = nil
+            
+            // Reset lock state
+            if self.isRecordingLocked {
+                self.isRecordingLocked = false
+                NotificationCenter.default.post(name: Notification.Name("RecordingLockedStateChanged"), object: nil, userInfo: ["isLocked": false])
+            }
 
-        // Reset toggle mode
-        isToggleMode = false
+            // Reset toggle mode
+            self.isToggleMode = false
 
-        // Update hudState if we're in transcription mode
-        if hudState == .showingTranscription {
-            print("🎙️ Updating HUD state after stopping transcription")
+            // Update hudState if we're in transcription mode
+            if self.hudState == .showingTranscription {
+                self.logger.debug("Updating HUD state after stopping transcription")
+                
+                // Skip transitioning state - go directly to hidden
+                // This makes the system immediately ready for the next hotkey press
+                self.logger.debug("Directly setting state to hidden to avoid transition delays")
+                self.hudState = .hidden
+                
+                // Ensure flags are reset so we can detect the next modifier key press
+                self.previousFlags = CGEventFlags(rawValue: 0)
+                
+                // Cancel any transition timer that might be active
+                self.transitionTimeoutTimer?.invalidate()
+                self.transitionTimeoutTimer = nil
+            }
             
-            // Skip transitioning state - go directly to hidden
-            // This makes the system immediately ready for the next hotkey press
-            print("🎙️ Directly setting state to hidden to avoid transition delays")
-            hudState = .hidden
-            
-            // Ensure flags are reset so we can detect the next modifier key press
-            previousFlags = CGEventFlags(rawValue: 0)
-            
-            // Cancel any transition timer that might be active
-            transitionTimeoutTimer?.invalidate()
-            transitionTimeoutTimer = nil
+            // Let user know transcription is deactivated
+            self.logger.debug("Transcription mode deactivated and system ready for next hotkey")
         }
-        
-        // Let user know transcription is deactivated
-        print("🎙️ Transcription mode deactivated and system ready for next hotkey")
     }
 
     private func isEventTapWorking() -> Bool {
         guard let eventTap = eventTap else {
-            print("❌ Event tap is nil")
+            logger.error("Event tap is nil")
             return false
         }
         
@@ -631,13 +649,13 @@ class GlobalHotkeyManager: ObservableObject {
     private func startTranscription() {
         // Only start if not already recording
         if isRecording {
-            print("🎙️ Already recording, not starting transcription")
+            logger.debug("Already recording, not starting transcription")
             return
         }
         
         // If any HUD is showing, hide it first
         if hudState != .hidden && hudState != .transitioning {
-            print("🎙️ HUD is showing, dismissing before transcription")
+            logger.debug("HUD is showing, dismissing before transcription")
             
             if hudState == .showingOverlay {
                 hudState = .transitioning
@@ -659,10 +677,8 @@ class GlobalHotkeyManager: ObservableObject {
     
     // Start recording for transcription (helper method)
     private func startRecordingForTranscription() {
-        print("🎙️ Starting transcription")
-        recordingMode = .transcriptionOnly
-        audioManager.setRecordingMode(recordingMode)
-        audioManager.startRecording()
+        logger.debug("Starting transcription")
+        startTranscriptionRecordingOnMain()
         
         // Update state to reflect transcription mode
         // If we're in transitioning state, wait briefly before updating
@@ -670,7 +686,7 @@ class GlobalHotkeyManager: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 guard let self = self else { return }
                 if self.hudState == .transitioning || self.hudState == .hidden {
-                    print("🎙️ Setting HUD state to showingTranscription after transition delay")
+                    logger.debug("Setting HUD state to showingTranscription after transition delay")
                     self.hudState = .showingTranscription
                 }
             }
@@ -679,19 +695,11 @@ class GlobalHotkeyManager: ObservableObject {
         }
         
         // Let user know transcription is active
-        print("🎙️ Transcription mode activated - press Control+Option again to stop recording")
+        logger.debug("Transcription mode activated - press Control+Option again to stop recording")
     }
 
-    // These methods are no longer used with the toggle approach
-    private func handleLongPressFnKey() {
-        // This method is no longer used since we're using Control+Option toggle for transcription
-    }
+    // MARK: - Transition Timeout
     
-    private func startPushToTalkTimer() {
-        // This method is no longer used since we're using Control+Option toggle for transcription
-    }
-
-    // Add a new method to handle transition timeout
     private func startTransitionTimeout() {
         // Cancel any existing timeout timer
         transitionTimeoutTimer?.invalidate()
@@ -700,11 +708,11 @@ class GlobalHotkeyManager: ObservableObject {
         transitionTimeoutTimer = Timer.scheduledTimer(withTimeInterval: transitionTimeout, repeats: false) { [weak self] _ in
             guard let self = self else { return }
             
-            print("⚠️ HUD transition timeout occurred. Current state: \(self.hudState)")
+            logger.debug("HUD transition timeout occurred. Current state: \(String(describing: self.hudState))")
             
             // If we're still in transitioning state after timeout, force reset to hidden
             if self.hudState == .transitioning {
-                print("🔄 Forcing HUD state reset to hidden due to timeout")
+                logger.debug("Forcing HUD state reset to hidden due to timeout")
                 self.hudState = .hidden
             }
         }
@@ -718,13 +726,13 @@ class GlobalHotkeyManager: ObservableObject {
         ]
         
         if invalidTransitions.contains(where: { $0.0 == oldState && $0.1 == newState }) {
-            print("⚠️ INVALID HUD STATE TRANSITION: \(oldState) -> \(newState)")
+            logger.warning("INVALID HUD STATE TRANSITION: \(String(describing: oldState)) -> \(String(describing: newState))")
             logBacktrace()
         }
         
         // Check for appropriate transitioning states
         if newState != .transitioning && oldState != .transitioning && newState != .hidden && oldState != .hidden {
-            print("⚠️ MISSING TRANSITIONING STATE: \(oldState) -> \(newState)")
+            logger.warning("MISSING TRANSITIONING STATE: \(String(describing: oldState)) -> \(String(describing: newState))")
             logBacktrace()
         }
     }
@@ -732,10 +740,10 @@ class GlobalHotkeyManager: ObservableObject {
     private func logBacktrace() {
         // Get stack trace programmatically
         let symbols = Thread.callStackSymbols
-        print("📋 STACK TRACE:")
+        logger.debug("STACK TRACE:")
         for (index, symbol) in symbols.enumerated() {
             if index > 1 && index < 10 { // Skip top frames and limit depth
-                print("   \(index): \(symbol)")
+                logger.debug("   \(index): \(symbol)")
             }
         }
     }
@@ -744,11 +752,11 @@ class GlobalHotkeyManager: ObservableObject {
     private func toggleTranscription() {
         if isRecording {
             // If already recording, stop it
-            print("🎙️ Control+Option pressed - Toggling transcription OFF")
+            logger.debug("Control+Option pressed - Toggling transcription OFF")
             stopRecordingAndSendAudio()
         } else {
             // If not recording, start it
-            print("🎙️ Control+Option pressed - Toggling transcription ON")
+            logger.debug("Control+Option pressed - Toggling transcription ON")
             startTranscription()
         }
     }

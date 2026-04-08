@@ -43,7 +43,12 @@ class ParakeetEngine: ObservableObject, SpeechRecognitionEngine {
     private var initializationTask: Task<Void, Error>?
     private var isInitializing = false
 
-    private static let vocabURL = URL(string: "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/main/parakeet_vocab.json")!
+    private static let vocabURL: URL = {
+        guard let url = URL(string: "https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v3-coreml/resolve/main/parakeet_vocab.json") else {
+            fatalError("Invalid vocabulary URL - this is a programming error, please verify the URL string")
+        }
+        return url
+    }()
 
     // MARK: - Initialization
 
@@ -343,7 +348,9 @@ class ParakeetEngine: ObservableObject, SpeechRecognitionEngine {
     /// Ensures the vocabulary file is present. FluidAudio has a bug where it doesn't download
     /// JSON files at the root level of the HuggingFace repo.
     private func ensureVocabularyFile() async throws {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw SpeechRecognitionError.downloadFailed("Unable to locate Application Support directory")
+        }
         let modelsDir = appSupport
             .appendingPathComponent("FluidAudio", isDirectory: true)
             .appendingPathComponent("Models", isDirectory: true)

@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+private let logger = Logger(subsystem: "com.dial8", category: "HUDStatusView")
+
 
 /// Status view components for the HUD
 struct HUDStatusView {
@@ -135,14 +138,14 @@ struct HUDStatusView {
                         .frame(width: 52)  // Fits the ultra-compact HUD
                         .transition(.opacity)
                         .onAppear {
-                            print("🔄 HUD: Showing setup animation")
+                            logger.debug("🔄 HUD: Showing setup animation")
                         }
                 } else if audioManager.isRecording {
                     AudioWaveformView()
                         .frame(width: 52)  // Fits the ultra-compact HUD
                         .transition(.opacity)
                         .onAppear {
-                            print("🎙️ HUD: Showing waveform")
+                            logger.debug("🎙️ HUD: Showing waveform")
                         }
                 } else {
                     // Show setup animation as fallback during initial state
@@ -150,7 +153,7 @@ struct HUDStatusView {
                         .frame(width: 52)
                         .transition(.opacity)
                         .onAppear {
-                            print("⏳ HUD: Showing setup animation (fallback)")
+                            logger.debug("⏳ HUD: Showing setup animation (fallback)")
                         }
                 }
             }
@@ -159,10 +162,10 @@ struct HUDStatusView {
             .padding(.vertical, 4)  // Reduced for smaller height
             .onAppear {
                 initialRecordingMode = audioManager.recordingMode
-                print("📊 HUD Status - Setup: \(audioManager.isAudioSetupInProgress), Recording: \(audioManager.isRecording)")
+                logger.debug("📊 HUD Status - Setup: \(audioManager.isAudioSetupInProgress), Recording: \(audioManager.isRecording)")
             }
-            .onChange(of: audioManager.isAudioSetupInProgress) { newValue in
-                print("📊 HUD Status Changed - Setup: \(newValue), Recording: \(audioManager.isRecording)")
+            .onChange(of: audioManager.isAudioSetupInProgress) { _, newValue in
+                logger.debug("📊 HUD Status Changed - Setup: \(newValue), Recording: \(audioManager.isRecording)")
             }
         }
     }

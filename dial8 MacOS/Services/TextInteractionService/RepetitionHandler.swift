@@ -1,15 +1,51 @@
 import Foundation
 import AppKit
+import os
 
 /// Responsible for detecting and fixing text repetition issues
 class RepetitionHandler {
     
+    private let logger = Logger(subsystem: "com.dial8", category: "RepetitionHandler")
     private let directTextInsertion: DirectTextInsertion
     private let textFormatter: TextFormatter
+    
+    // Cache for similarity calculations to avoid redundant O(n²) Levenshtein computations
+    private var similarityCache: [String: Double] = [:]
+    private let maxCacheSize = 1000
+    
+    // Early-exit threshold: if similarity drops below this, break the loop
+    private let earlyExitThreshold = 0.2
     
     init(directTextInsertion: DirectTextInsertion, textFormatter: TextFormatter) {
         self.directTextInsertion = directTextInsertion
         self.textFormatter = textFormatter
+    }
+    
+    /// Calculates text similarity with caching to avoid redundant computations
+    /// - Parameters:
+    ///   - a: The first string
+    ///   - b: The second string
+    /// - Returns: Similarity score between 0 and 1
+    private func cachedSimilarity(_ a: String, _ b: String) -> Double {
+        // Create a normalized cache key (alphabetically sorted to maximize cache hits)
+        let key = a < b ? "\(a)\u{0000}\(b)" : "\(b)\u{0000}\(a)"
+        
+        if let cached = similarityCache[key] {
+            return cached
+        }
+        
+        let similarity = textFormatter.calculateTextSimilarity(a, b)
+        similarityCache[key] = similarity
+        
+        // Prevent unbounded cache growth
+        if similarityCache.count > maxCacheSize {
+            let keysToRemove = similarityCache.keys.prefix(similarityCache.count - maxCacheSize / 2)
+            for key in keysToRemove {
+                similarityCache.removeValue(forKey: key)
+            }
+        }
+        
+        return similarity
     }
     
     /// Detects and fixes problematic repetition patterns in the active text field or view
@@ -35,13 +71,13 @@ class RepetitionHandler {
         
         // Check if the current text contains problematic repetition patterns
         if hasRepeatedPhrases(in: currentText) {
-            print("⚠️ Detected problematic repetition pattern")
+            logger.warning("⚠️ Detected problematic repetition pattern")
             
             // Try to fix the repetition
             let cleanedText = handleProblematicRepetitionPattern(in: currentText)
             
             if cleanedText != currentText {
-                print("🧹 Applying fix for repetition pattern")
+                logger.debug("🧹 Applying fix for repetition pattern")
                 return performCompleteTextCleanup(
                     cleanedText: cleanedText,
                     activeTextField: activeTextField,
@@ -111,11 +147,17 @@ class RepetitionHandler {
                     // Create potential phrases to check
                     for i in 0...(words.count - appendedWords.count) {
                         let segment = words[i..<(i + appendedWords.count)].joined(separator: " ")
-                        let similarity = textFormatter.calculateTextSimilarity(segment, appendedText)
+                        
+                        // Early exit: if the segment is too dissimilar from the appended text, skip further checks
+                        if segment.count < Int(Double(appendedText.count) * (1.0 - earlyExitThreshold)) {
+                            continue
+                        }
+                        
+                        let similarity = cachedSimilarity(segment, appendedText)
                         
                         // If similarity is high, it's a repetition
                         if similarity > 0.8 {
-                            print("⚠️ Detected potential repetition: \"\(segment)\" vs \"\(appendedText)\"")
+                            logger.warning("⚠️ Detected potential repetition: \"\(segment)\" vs \"\(appendedText)\"")
                             return true
                         }
                     }
@@ -125,7 +167,7 @@ class RepetitionHandler {
         
         // Check for repeated sections within the new text itself
         if hasRepeatedPhrases(in: newText) {
-            print("⚠️ Detected repeated phrases in new text")
+            logger.warning("⚠️ Detected repeated phrases in new text")
             return true
         }
         
@@ -153,9 +195,9 @@ class RepetitionHandler {
             let firstHalf = String(text[..<middleIndex])
             let secondHalf = String(text[middleIndex...])
             
-            let similarity = textFormatter.calculateTextSimilarity(firstHalf, secondHalf)
+            let similarity = cachedSimilarity(firstHalf, secondHalf)
             if similarity > 0.8 {
-                print("⚠️ Detected similar halves in text (similarity: \(similarity))")
+                logger.warning("⚠️ Detected similar halves in text (similarity: \(similarity))")
                 return true
             }
         }
@@ -165,9 +207,9 @@ class RepetitionHandler {
         if sentences.count >= 2 {
             for i in 0..<sentences.count-1 {
                 if sentences[i].count > 10 { // Only consider substantial sentences
-                    let similarity = textFormatter.calculateTextSimilarity(sentences[i], sentences[i+1])
+                    let similarity = cachedSimilarity(sentences[i], sentences[i+1])
                     if similarity > 0.8 {
-                        print("⚠️ Detected similar adjacent sentences (similarity: \(similarity))")
+                        logger.warning("⚠️ Detected similar adjacent sentences (similarity: \(similarity))")
                         return true
                     }
                 }
@@ -185,9 +227,9 @@ class RepetitionHandler {
                         let phrase2 = words[j..<(j + phraseLength)].joined(separator: " ").lowercased()
                         
                         // Calculate similarity between phrases
-                        let similarity = textFormatter.calculateTextSimilarity(phrase1, phrase2)
+                        let similarity = cachedSimilarity(phrase1, phrase2)
                         if similarity > 0.9 {
-                            print("⚠️ Detected repeated phrase: \"\(phrase1)\" and \"\(phrase2)\" (similarity: \(similarity))")
+                            logger.warning("⚠️ Detected repeated phrase: \"\(phrase1)\" and \"\(phrase2)\" (similarity: \(similarity))")
                             return true
                         }
                     }
@@ -200,7 +242,7 @@ class RepetitionHandler {
             if words[i].count > 2 { // Only consider substantial words
                 if words[i].lowercased() == words[i+1].lowercased() && 
                    words[i].lowercased() == words[i+2].lowercased() {
-                    print("⚠️ Detected word stuttering: \"\(words[i])\" repeated 3+ times")
+                    logger.warning("⚠️ Detected word stuttering: \"\(words[i])\" repeated 3+ times")
                     return true
                 }
             }
@@ -218,7 +260,7 @@ class RepetitionHandler {
         let sentences = text.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         
         if let firstSentence = sentences.first, !firstSentence.isEmpty, firstSentence.count > 10 {
-            print("🧹 Extracting first meaningful sentence: \"\(firstSentence)\"")
+            logger.debug("🧹 Extracting first meaningful sentence: \"\(firstSentence)\"")
             return firstSentence + "."
         }
         
@@ -231,7 +273,7 @@ class RepetitionHandler {
     /// - Returns: The cleaned text
     func cleanRepeatedText(_ text: String) -> String {
         // Split into sentences
-        var sentences = text.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let sentences = text.components(separatedBy: ".").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         
         // If we don't have any usable sentences, return the original text
         if sentences.isEmpty {
@@ -244,7 +286,7 @@ class RepetitionHandler {
             var isDuplicate = false
             
             for existingSentence in uniqueSentences {
-                let similarity = textFormatter.calculateTextSimilarity(existingSentence, sentence)
+                let similarity = cachedSimilarity(existingSentence, sentence)
                 if similarity > 0.7 {
                     isDuplicate = true
                     break
@@ -288,12 +330,12 @@ class RepetitionHandler {
             
             // Skip ahead past any immediate repetitions of this word
             var j = i + 1
-            while j < words.count && textFormatter.calculateTextSimilarity(words[i], words[j]) > 0.9 {
+            while j < words.count && cachedSimilarity(words[i], words[j]) > 0.9 {
                 j += 1
             }
             
             if j > i + 1 {
-                print("🧹 Skipping repeated word: \"\(word)\"")
+                logger.debug("🧹 Skipping repeated word: \"\(word)\"")
                 i = j // Jump ahead
             } else {
                 i += 1 // Normal advance

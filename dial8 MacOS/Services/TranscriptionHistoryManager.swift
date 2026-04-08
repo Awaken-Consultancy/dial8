@@ -1,7 +1,9 @@
 import Foundation
 import SwiftUI
+import os
 
 class TranscriptionHistoryManager: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "TranscriptionHistoryManager")
     static let shared = TranscriptionHistoryManager()
     
     @Published var transcriptionHistory: [TranscriptionHistoryItem] = []
@@ -29,27 +31,27 @@ class TranscriptionHistoryManager: ObservableObject {
         
         saveHistory()
         
-        print("📝 Added transcription to history: \(text.prefix(50))...")
+        logger.debug("📝 Added transcription to history: \(text.prefix(50))...")
     }
     
     private func loadHistory() {
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
            let items = try? JSONDecoder().decode([TranscriptionHistoryItem].self, from: data) {
             self.transcriptionHistory = items
-            print("📥 Loaded \(items.count) transcription history items")
+            logger.debug("📥 Loaded \(items.count) transcription history items")
         }
     }
     
     private func saveHistory() {
         if let encoded = try? JSONEncoder().encode(transcriptionHistory) {
             UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
-            print("💾 Saved transcription history")
+            logger.debug("💾 Saved transcription history")
         }
     }
     
     func clearHistory() {
         transcriptionHistory.removeAll()
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
-        print("🗑️ Cleared transcription history")
+        logger.debug("🗑️ Cleared transcription history")
     }
 }

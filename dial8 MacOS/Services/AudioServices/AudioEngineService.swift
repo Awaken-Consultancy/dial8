@@ -3,6 +3,7 @@ import Foundation
 import Combine
 import CoreAudio
 import AudioToolbox
+import os
 
 enum AudioEngineState {
     case inactive      // Fully stopped
@@ -11,6 +12,8 @@ enum AudioEngineState {
 }
 
 class AudioEngineService: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioEngineService")
+
     private(set) var audioEngine: AVAudioEngine?
     @Published private(set) var engineState: AudioEngineState = .inactive
 
@@ -49,7 +52,7 @@ class AudioEngineService: ObservableObject {
             forName: NSNotification.Name.AVAudioEngineConfigurationChange,
             object: nil,
             queue: .main) { [weak self] _ in
-                print("AudioEngineService: Device configuration change detected")
+                self?.logger.debug("AudioEngineService: Device configuration change detected")
                 self?.handleDeviceChange()
         }
         
@@ -58,7 +61,7 @@ class AudioEngineService: ObservableObject {
             forName: .AVAudioEngineConfigurationChange,
             object: audioEngine,
             queue: .main) { [weak self] _ in
-                print("AudioEngineService: Engine configuration change detected")
+                self?.logger.debug("AudioEngineService: Engine configuration change detected")
                 self?.handleConfigurationChange()
         }
     }
@@ -69,7 +72,7 @@ class AudioEngineService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            print("AudioEngineService: Selected input device changed, reconfiguring...")
+            self?.logger.debug("AudioEngineService: Selected input device changed, reconfiguring...")
             self?.reconfigureEngine()
         }
     }
@@ -80,10 +83,10 @@ class AudioEngineService: ObservableObject {
         // Get the selected device from AudioDeviceEnumerationService
         let deviceService = AudioDeviceEnumerationService.shared
 
-        guard let selectedUID = deviceService.selectedDeviceUID,
+        guard let _ = deviceService.selectedDeviceUID,
               let deviceID = deviceService.getDeviceIDForSelectedDevice() else {
             // Use system default - no configuration needed
-            print("AudioEngineService: Using system default input device")
+            logger.debug("AudioEngineService: Using system default input device")
             return
         }
 
@@ -91,7 +94,7 @@ class AudioEngineService: ObservableObject {
         let inputNode = audioEngine.inputNode
 
         guard let audioUnit = inputNode.audioUnit else {
-            print("AudioEngineService: Failed to get audio unit from input node")
+            logger.debug("AudioEngineService: Failed to get audio unit from input node")
             return
         }
 
@@ -106,36 +109,36 @@ class AudioEngineService: ObservableObject {
         )
 
         if status == noErr {
-            print("AudioEngineService: Set input device to ID \(deviceID) (\(deviceService.getCurrentDeviceName()))")
+            logger.debug("AudioEngineService: Set input device to ID \(deviceID) (\(deviceService.getCurrentDeviceName()))")
         } else {
-            print("AudioEngineService: Failed to set input device: \(status)")
+            logger.debug("AudioEngineService: Failed to set input device: \(status)")
         }
     }
 
     private func handleDeviceChange() {
         // Skip if this is a user-initiated device change (handled by reconfigureEngine)
         if AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange {
-            print("AudioEngineService: Device change detected (user-initiated, skipping)")
+            logger.debug("AudioEngineService: Device change detected (user-initiated, skipping)")
             return
         }
-        print("AudioEngineService: Device change detected (system)")
+        logger.debug("AudioEngineService: Device change detected (system)")
         gracefulReconfiguration(delay: 0.3)
     }
 
     private func handleConfigurationChange() {
         // Skip if this is a user-initiated device change (handled by reconfigureEngine)
         if AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange {
-            print("AudioEngineService: Config change detected (user-initiated, skipping)")
+            logger.debug("AudioEngineService: Config change detected (user-initiated, skipping)")
             return
         }
-        print("AudioEngineService: Configuration change detected (system)")
+        logger.debug("AudioEngineService: Configuration change detected (system)")
         gracefulReconfiguration(delay: 0.1)
     }
     
     private func gracefulReconfiguration(delay: TimeInterval) {
         // Only reconfigure if not already in progress
         guard !isConfigurationPending && !isRecoveryInProgress else {
-            print("AudioEngineService: Reconfiguration already in progress")
+            logger.debug("AudioEngineService: Reconfiguration already in progress")
             return
         }
         
@@ -161,23 +164,24 @@ class AudioEngineService: ObservableObject {
             self.setupAudioEngine()
             
             // Wait for engine to be ready before restoring state
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                guard let self = self else { return }
                 // Always reset the pending flag regardless of engine state
                 // Previously this only reset on warmStandby, leaving it stuck
                 // if the engine failed to start or entered recovery
                 self.isConfigurationPending = false
                 
                 if self.engineState == .warmStandby {
-                    print("AudioEngineService: Graceful reconfiguration completed successfully")
+                    self.logger.debug("AudioEngineService: Graceful reconfiguration completed successfully")
                 } else {
-                    print("AudioEngineService: Graceful reconfiguration completed, engine state: \(self.engineState)")
+                    self.logger.debug("AudioEngineService: Graceful reconfiguration completed, engine state: \(String(describing: self.engineState))")
                 }
             }
         }
     }
     
     func setupAudioEngine() {
-        print("AudioEngineService: Setting up audio engine - START")
+        logger.debug("AudioEngineService: Setting up audio engine - START")
 
         // Clean up existing engine if any
         stopEngine()
@@ -186,7 +190,7 @@ class AudioEngineService: ObservableObject {
         audioEngine = AVAudioEngine()
 
         guard let audioEngine = audioEngine else {
-            print("AudioEngineService: Failed to create audio engine")
+            logger.debug("AudioEngineService: Failed to create audio engine")
             return
         }
 
@@ -196,12 +200,12 @@ class AudioEngineService: ObservableObject {
         // Get the native input format
         let inputNode = audioEngine.inputNode
         let nativeFormat = inputNode.inputFormat(forBus: 0)
-        print("AudioEngineService: Native input format: \(nativeFormat)")
+        logger.debug("AudioEngineService: Native input format: \(nativeFormat)")
         
         // Create and configure converter node
         converterNode = AVAudioMixerNode()
         guard let converterNode = converterNode else {
-            print("AudioEngineService: Failed to create converter node")
+            logger.debug("AudioEngineService: Failed to create converter node")
             return
         }
         
@@ -221,7 +225,7 @@ class AudioEngineService: ObservableObject {
                                          interleaved: false)
         
         guard let format = desiredFormat else {
-            print("AudioEngineService: Failed to create audio format")
+            logger.debug("AudioEngineService: Failed to create audio format")
             return
         }
         
@@ -232,7 +236,7 @@ class AudioEngineService: ObservableObject {
         audioConverter = AVAudioConverter(from: nativeFormat, to: format)
         
         guard let audioConverter = audioConverter else {
-            print("AudioEngineService: Failed to create audio converter")
+            logger.debug("AudioEngineService: Failed to create audio converter")
             return
         }
         
@@ -257,7 +261,7 @@ class AudioEngineService: ObservableObject {
             if error == nil {
                 self.onAudioBuffer?(convertedBuffer)
             } else {
-                print("AudioEngineService: Buffer conversion error: \(error?.localizedDescription ?? "unknown")")
+                logger.debug("AudioEngineService: Buffer conversion error: \(error?.localizedDescription ?? "unknown")")
             }
         }
         
@@ -268,9 +272,9 @@ class AudioEngineService: ObservableObject {
         do {
             try audioEngine.start()
             engineState = .warmStandby
-            print("AudioEngineService: Engine initialized and started successfully")
+            logger.debug("AudioEngineService: Engine initialized and started successfully")
         } catch {
-            print("AudioEngineService: Failed to start engine during setup: \(error)")
+            logger.debug("AudioEngineService: Failed to start engine during setup: \(error)")
             engineState = .inactive
             if !isRecoveryInProgress {
                 attemptRecovery()
@@ -280,17 +284,17 @@ class AudioEngineService: ObservableObject {
     
     func startEngine() -> Bool {
         guard let audioEngine = audioEngine else {
-            print("AudioEngineService: No audio engine available")
+            logger.debug("AudioEngineService: No audio engine available")
             return false
         }
         
         do {
             try audioEngine.start()
             engineState = .warmStandby
-            print("AudioEngineService: Engine started successfully")
+            logger.debug("AudioEngineService: Engine started successfully")
             return true
         } catch {
-            print("AudioEngineService: Failed to start engine: \(error)")
+            logger.debug("AudioEngineService: Failed to start engine: \(error)")
             engineState = .inactive
             if !isRecoveryInProgress {
                 attemptRecovery()
@@ -300,7 +304,7 @@ class AudioEngineService: ObservableObject {
     }
     
     func stopEngine() {
-        print("AudioEngineService: Stopping engine...")
+        logger.debug("AudioEngineService: Stopping engine...")
 
         engineState = .inactive
 
@@ -308,13 +312,13 @@ class AudioEngineService: ObservableObject {
         if let converter = converterNode {
             converter.removeTap(onBus: 0)
             converterNode = nil
-            print("AudioEngineService: Removed converter tap")
+            logger.debug("AudioEngineService: Removed converter tap")
         }
 
         // Stop engine if running
         if let engine = audioEngine, engine.isRunning {
             engine.stop()
-            print("AudioEngineService: Engine stopped")
+            logger.debug("AudioEngineService: Engine stopped")
         }
 
         // Clear all references
@@ -322,25 +326,25 @@ class AudioEngineService: ObservableObject {
         currentFormat = nil
         audioConverter = nil
 
-        print("AudioEngineService: Engine cleanup complete")
+        logger.debug("AudioEngineService: Engine cleanup complete")
     }
     
     func setStreamingState() {
         // Prevent setting streaming state if configuration is pending
         guard !isConfigurationPending else {
-            print("AudioEngineService: Cannot set streaming state while configuration is pending")
+            logger.debug("AudioEngineService: Cannot set streaming state while configuration is pending")
             return
         }
         
         // If already in streaming state, just return
         if engineState == .streaming {
-            print("AudioEngineService: Already in streaming state")
+            logger.debug("AudioEngineService: Already in streaming state")
             return
         }
         
         // If engine is not available or not running, set it up
         if audioEngine == nil || !(audioEngine?.isRunning ?? false) {
-            print("AudioEngineService: Setting up new engine for streaming")
+            logger.debug("AudioEngineService: Setting up new engine for streaming")
             setupAudioEngine()
             
             // Wait for engine to be ready
@@ -349,9 +353,9 @@ class AudioEngineService: ObservableObject {
                 
                 if let engine = self.audioEngine, engine.isRunning {
                     self.engineState = .streaming
-                    print("AudioEngineService: Engine ready and set to streaming state")
+                    self.logger.debug("AudioEngineService: Engine ready and set to streaming state")
                 } else {
-                    print("AudioEngineService: Failed to prepare engine for streaming")
+                    self.logger.debug("AudioEngineService: Failed to prepare engine for streaming")
                 }
             }
             return
@@ -359,16 +363,16 @@ class AudioEngineService: ObservableObject {
         
         // If we have a running engine, just update the state
         engineState = .streaming
-        print("AudioEngineService: Updated to streaming state")
+        logger.debug("AudioEngineService: Updated to streaming state")
     }
     
     func reconfigureEngine() {
-        print("AudioEngineService: Reconfiguring engine")
+        logger.debug("AudioEngineService: Reconfiguring engine")
 
         // Consume the user-initiated flag immediately to prevent spurious system
         // notifications from triggering additional reconfigurations during this process.
         // The isConfigurationPending flag then acts as the guard against duplicates.
-        AudioDeviceEnumerationService.shared.consumeUserInitiatedFlag()
+        _ = AudioDeviceEnumerationService.shared.consumeUserInitiatedFlag()
 
         isConfigurationPending = true
 
@@ -392,19 +396,19 @@ class AudioEngineService: ObservableObject {
         
         func attempt(index: Int) {
             guard index < delays.count else {
-                print("AudioEngineService: Recovery failed after all attempts")
-                isRecoveryInProgress = false
+                self.logger.debug("AudioEngineService: Recovery failed after all attempts")
+                self.isRecoveryInProgress = false
                 return
             }
             
             DispatchQueue.main.asyncAfter(deadline: .now() + delays[index]) { [weak self] in
                 guard let self = self else { return }
                 
-                print("AudioEngineService: Recovery attempt \(index + 1)")
+                self.logger.debug("AudioEngineService: Recovery attempt \(index + 1)")
                 self.setupAudioEngine()
                 
                 if self.startEngine() {
-                    print("AudioEngineService: Recovery successful")
+                    self.logger.debug("AudioEngineService: Recovery successful")
                     self.isRecoveryInProgress = false
                 } else {
                     attempt(index: index + 1)

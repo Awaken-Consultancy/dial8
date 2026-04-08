@@ -22,6 +22,7 @@
 import AVFoundation
 import ApplicationServices
 import Speech
+import os
 
 #if os(macOS)
 import AppKit
@@ -29,6 +30,7 @@ import Darwin
 #endif
 
 class PermissionManager {
+    private let logger = Logger(subsystem: "com.dial8", category: "PermissionManager")
     static let shared = PermissionManager()
     
     private init() {}
@@ -72,34 +74,34 @@ class PermissionManager {
     }
     
     func requestMicrophonePermission(completion: @escaping (Bool) -> Void) {
-        print("🎤 Requesting microphone permission...")
+        logger.debug("🎤 Requesting microphone permission...")
         #if os(macOS)
         if #available(macOS 14.0, *) {
             let status = AVAudioApplication.shared.recordPermission
-            print("🎤 Current microphone status (AVAudioApplication): \(String(describing: status))")
+            logger.debug("🎤 Current microphone status (AVAudioApplication): \(String(describing: status))")
             
             switch status {
             case .undetermined:
-                print("🎤 Showing system microphone permission prompt...")
-                AVAudioApplication.requestRecordPermission { granted in
-                    print("🎤 User responded to microphone prompt: \(granted)")
+                logger.debug("🎤 Showing system microphone permission prompt...")
+                AVAudioApplication.requestRecordPermission { [weak self] granted in
+                    self?.logger.debug("🎤 User responded to microphone prompt: \(granted)")
                     DispatchQueue.main.async {
                         completion(granted)
                     }
                 }
             case .denied:
-                print("🎤 Microphone permission previously denied, opening System Settings...")
+                logger.debug("🎤 Microphone permission previously denied, opening System Settings...")
                 DispatchQueue.main.async {
                     self.openSystemPreferencesPrivacyMicrophone()
                     completion(false)
                 }
             case .granted:
-                print("🎤 Microphone already authorized")
+                logger.debug("🎤 Microphone already authorized")
                 DispatchQueue.main.async {
                     completion(true)
                 }
             @unknown default:
-                print("🎤 Unknown microphone permission status")
+                logger.debug("🎤 Unknown microphone permission status")
                 DispatchQueue.main.async {
                     completion(false)
                 }
@@ -114,30 +116,30 @@ class PermissionManager {
     
     private func requestMicrophonePermissionLegacyAVCapture(completion: @escaping (Bool) -> Void) {
         let permissionStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-        print("🎤 Current microphone status (AVCaptureDevice): \(permissionStatus.rawValue)")
+        logger.debug("🎤 Current microphone status (AVCaptureDevice): \(permissionStatus.rawValue)")
         
         switch permissionStatus {
         case .notDetermined:
-            print("🎤 Showing system microphone permission prompt...")
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                print("🎤 User responded to microphone prompt: \(granted)")
+            logger.debug("🎤 Showing system microphone permission prompt...")
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                self?.logger.debug("🎤 User responded to microphone prompt: \(granted)")
                 DispatchQueue.main.async {
                     completion(granted)
                 }
             }
         case .denied, .restricted:
-            print("🎤 Microphone permission previously denied, opening System Settings...")
+            logger.debug("🎤 Microphone permission previously denied, opening System Settings...")
             DispatchQueue.main.async {
                 self.openSystemPreferencesPrivacyMicrophone()
                 completion(false)
             }
         case .authorized:
-            print("🎤 Microphone already authorized")
+            logger.debug("🎤 Microphone already authorized")
             DispatchQueue.main.async {
                 completion(true)
             }
         @unknown default:
-            print("🎤 Unknown microphone permission status")
+            logger.debug("🎤 Unknown microphone permission status")
             DispatchQueue.main.async {
                 completion(false)
             }
@@ -158,37 +160,37 @@ class PermissionManager {
     }
     
     func requestSpeechRecognitionPermission(completion: @escaping (Bool) -> Void) {
-        print("🗣️ Requesting speech recognition permission...")
+        logger.debug("🗣️ Requesting speech recognition permission...")
         let status = SFSpeechRecognizer.authorizationStatus()
-        print("🗣️ Current speech recognition status: \(status.rawValue)")
+        logger.debug("🗣️ Current speech recognition status: \(status.rawValue)")
         
         switch status {
         case .notDetermined:
-            print("🗣️ Showing system speech recognition prompt...")
-            SFSpeechRecognizer.requestAuthorization { authStatus in
-                print("🗣️ User responded to speech recognition prompt: \(authStatus.rawValue)")
-                DispatchQueue.main.async {
+            logger.debug("🗣️ Showing system speech recognition prompt...")
+            SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
+                self?.logger.debug("🗣️ User responded to speech recognition prompt: \(authStatus.rawValue)")
+                DispatchQueue.main.async { [weak self] in
                     let granted = authStatus == .authorized
                     if !granted {
-                        print("🗣️ Speech recognition not granted, opening System Settings...")
-                        self.openSystemPreferencesPrivacySpeech()
+                        self?.logger.debug("🗣️ Speech recognition not granted, opening System Settings...")
+                        self?.openSystemPreferencesPrivacySpeech()
                     }
                     completion(granted)
                 }
             }
         case .denied, .restricted:
-            print("🗣️ Speech recognition previously denied, opening System Settings...")
+            logger.debug("🗣️ Speech recognition previously denied, opening System Settings...")
             DispatchQueue.main.async {
                 self.openSystemPreferencesPrivacySpeech()
                 completion(false)
             }
         case .authorized:
-            print("🗣️ Speech recognition already authorized")
+            logger.debug("🗣️ Speech recognition already authorized")
             DispatchQueue.main.async {
                 completion(true)
             }
         @unknown default:
-            print("🗣️ Unknown speech recognition status")
+            logger.debug("🗣️ Unknown speech recognition status")
             DispatchQueue.main.async {
                 completion(false)
             }
@@ -198,10 +200,10 @@ class PermissionManager {
     // MARK: - Accessibility Permission
     
     func checkAccessibilityPermission() -> Bool {
-        print("🔑 PERMISSION: Checking accessibility permission")
+        logger.debug("🔑 PERMISSION: Checking accessibility permission")
         #if os(macOS)
         let result = AXIsProcessTrusted()
-        print("🔑 PERMISSION: Accessibility permission status: \(result)")
+        logger.debug("🔑 PERMISSION: Accessibility permission status: \(result)")
         #if DEBUG
         if !result {
             logAccessibilityDeniedDeveloperHint()
@@ -223,15 +225,15 @@ class PermissionManager {
     #if DEBUG
     private func logAccessibilityDeniedDeveloperHint() {
         let path = Bundle.main.bundlePath
-        print("🔑 PERMISSION: Accessibility is not granted for this running process.")
-        print("🔑 PERMISSION: Bundle path: \(path)")
+        logger.debug("🔑 PERMISSION: Accessibility is not granted for this running process.")
+        logger.debug("🔑 PERMISSION: Bundle path: \(path)")
         if isProcessBeingTracedByDebugger() {
-            print("🔑 PERMISSION: A debugger appears to be attached (e.g. Xcode Run). Accessibility trust often fails in this mode. Quit, then Scheme → Run → uncheck “Debug executable”, or open the built app from Finder. Some setups also require enabling “Xcode” in the same Accessibility list.")
+            logger.debug("🔑 PERMISSION: A debugger appears to be attached (e.g. Xcode Run). Accessibility trust often fails in this mode. Quit, then Scheme → Run → uncheck “Debug executable”, or open the built app from Finder. Some setups also require enabling “Xcode” in the same Accessibility list.")
         } else if path.contains("DerivedData") {
-            print("🔑 PERMISSION: You are running from Xcode’s build output. Ensure Dial8 is enabled for this path in System Settings → Privacy & Security → Accessibility.")
+            logger.debug("🔑 PERMISSION: You are running from Xcode’s build output. Ensure Dial8 is enabled for this path in System Settings → Privacy & Security → Accessibility.")
         }
         if let bid = Bundle.main.bundleIdentifier {
-            print("🔑 PERMISSION: To reset TCC for this app: `tccutil reset Accessibility \(bid)` then relaunch and enable Dial8 again.")
+            logger.debug("🔑 PERMISSION: To reset TCC for this app: `tccutil reset Accessibility \(bid)` then relaunch and enable Dial8 again.")
         }
     }
     #endif
@@ -264,25 +266,25 @@ class PermissionManager {
     #endif
     
     func requestAccessibilityPermissionWithPrompt(completion: @escaping (Bool) -> Void) {
-        print("🔑 Requesting accessibility permission...")
+        logger.debug("🔑 Requesting accessibility permission...")
         
         #if os(macOS)
         let currentStatus = AXIsProcessTrusted()
-        print("🔑 Current accessibility status: \(currentStatus)")
+        logger.debug("🔑 Current accessibility status: \(currentStatus)")
         
         // Must use takeUnretainedValue — the key is a global CFString (same as AccessibilityTextInsertion).
         let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         let promptShown = AXIsProcessTrustedWithOptions(options)
-        print("🔑 Accessibility prompt shown: \(promptShown)")
+        logger.debug("🔑 Accessibility prompt shown: \(promptShown)")
         
         // Give the user a moment to respond to the prompt
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             let newStatus = AXIsProcessTrusted()
-            print("🔑 New accessibility status: \(newStatus)")
+            self?.logger.debug("🔑 New accessibility status: \(newStatus)")
             
             if !newStatus {
-                print("🔑 Permission not granted, opening System Settings...")
-                self.openAccessibilitySettings()
+                self?.logger.debug("🔑 Permission not granted, opening System Settings...")
+                self?.openAccessibilitySettings()
             }
             
             completion(newStatus)

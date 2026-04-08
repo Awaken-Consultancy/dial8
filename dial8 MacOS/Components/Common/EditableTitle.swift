@@ -26,7 +26,7 @@ struct EditableTitle: View {
             .onSubmit {
                 saveTitle()
             }
-            .onChange(of: isTitleFocused) { focused in
+            .onChange(of: isTitleFocused) { _, focused in
                 if !focused {
                     saveTitle()
                 }
@@ -51,7 +51,7 @@ struct EditableTitle: View {
         
         // Force first responder to nil before focusing on title
         if let window = NSApplication.shared.keyWindow {
-            if let responder = window.firstResponder as? NSTextView {
+            if window.firstResponder is NSTextView {
                 window.makeFirstResponder(nil)
             }
             

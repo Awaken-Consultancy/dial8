@@ -1,7 +1,9 @@
 import Cocoa
 import Foundation
+import os
 
 class TextSelectionService {
+    private let logger = Logger(subsystem: "com.dial8", category: "TextSelectionService")
     static let shared = TextSelectionService()
     
     // Use a queue for text retrieval operations
@@ -40,17 +42,17 @@ class TextSelectionService {
         let options = [checkOptionPrompt: false] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
         
-        print("📝 TextSelectionService: App has accessibility permission: \(trusted)")
+        logger.debug("📝 TextSelectionService: App has accessibility permission: \(trusted)")
     }
     
     func getSelectedText() -> String? {
-        print("📝 TextSelectionService: Getting selected text")
+        logger.debug("📝 TextSelectionService: Getting selected text")
         
         // Get current app's bundle ID
         let focusedAppBundleID = getFocusedApplicationBundleID() ?? "unknown"
         let appName = getFocusedApplicationName()?.lowercased() ?? ""
         
-        print("📝 TextSelectionService: Current app is \(appName) (\(focusedAppBundleID))")
+        logger.debug("📝 TextSelectionService: Current app is \(appName) (\(focusedAppBundleID))")
         
         // Force reset state to ensure we're always getting fresh selection
         let pasteboard = NSPasteboard.general
@@ -65,7 +67,7 @@ class TextSelectionService {
            focusedAppBundleID.contains("editor") ||
            appName.contains("code") || 
            appName.contains("editor") {
-            print("📝 TextSelectionService: Code editor detected, applying special handling")
+            logger.debug("📝 TextSelectionService: Code editor detected, applying special handling")
             // For code editors, we'll prioritize the clipboard approach
             let clipboardResult = tryGetSelectedTextViaClipboard()
             if let result = clipboardResult {
@@ -83,25 +85,25 @@ class TextSelectionService {
         // For code editors, always try both methods (accessibility and clipboard)
         // Code editors often have selected text that's not accessible via accessibility APIs
         if isCodeEditor {
-            print("📝 TextSelectionService: Detected likely code editor: \(focusedAppBundleID), trying both methods")
+            logger.debug("📝 TextSelectionService: Detected likely code editor: \(focusedAppBundleID), trying both methods")
             
             // First try accessibility - it might work
             let (accessibilityResult, _) = tryGetSelectedTextViaAccessibility()
             
             // If we got text via accessibility, return it
             if let text = accessibilityResult, !text.isEmpty {
-                print("📝 TextSelectionService: Successfully got text from code editor via accessibility")
+                logger.debug("📝 TextSelectionService: Successfully got text from code editor via accessibility")
                 return text
             }
             
             // Otherwise, always try clipboard for code editors, regardless of the element info
-            print("📝 TextSelectionService: Code editor, using clipboard fallback")
+            logger.debug("📝 TextSelectionService: Code editor, using clipboard fallback")
             let clipboardResult = tryGetSelectedTextViaClipboard()
             
             if clipboardResult != nil {
-                print("📝 TextSelectionService: Successfully got text from code editor via clipboard")
+                logger.debug("📝 TextSelectionService: Successfully got text from code editor via clipboard")
             } else {
-                print("📝 TextSelectionService: No text found in code editor via either method")
+                logger.debug("📝 TextSelectionService: No text found in code editor via either method")
             }
             
             return clipboardResult
@@ -109,7 +111,7 @@ class TextSelectionService {
         
         // Check if this app is known to restrict accessibility
         if accessibilityRestrictedApps.contains(focusedAppBundleID) {
-            print("📝 TextSelectionService: App known to restrict accessibility, using clipboard directly")
+            logger.debug("📝 TextSelectionService: App known to restrict accessibility, using clipboard directly")
             return tryGetSelectedTextViaClipboard()
         }
         
@@ -118,13 +120,13 @@ class TextSelectionService {
         
         // If we got definitive text via accessibility, return it
         if let text = accessibilityResult, !text.isEmpty {
-            print("📝 TextSelectionService: Successfully got text via accessibility")
+            logger.debug("📝 TextSelectionService: Successfully got text via accessibility")
             return text
         }
         
         // Check if accessibility appears to be restricted
         if elementInfo.accessibilityRestricted {
-            print("📝 TextSelectionService: Accessibility appears restricted, adding app to restricted list")
+            logger.debug("📝 TextSelectionService: Accessibility appears restricted, adding app to restricted list")
             accessibilityRestrictedApps.insert(focusedAppBundleID)
             return tryGetSelectedTextViaClipboard()
         }
@@ -133,18 +135,18 @@ class TextSelectionService {
         let shouldTryClipboard = elementInfo.shouldAttemptCopy
         
         if !shouldTryClipboard {
-            print("📝 TextSelectionService: Element not suitable for copy, skipping clipboard: \(elementInfo.reason)")
+            logger.debug("📝 TextSelectionService: Element not suitable for copy, skipping clipboard: \(elementInfo.reason)")
             return nil
         }
         
         // Try clipboard as fallback for suitable elements
-        print("📝 TextSelectionService: Element suitable for copy: \(elementInfo.reason), trying clipboard")
+        logger.debug("📝 TextSelectionService: Element suitable for copy: \(elementInfo.reason), trying clipboard")
         let clipboardResult = tryGetSelectedTextViaClipboard()
         
         if clipboardResult != nil {
-            print("📝 TextSelectionService: Successfully got text via clipboard")
+            logger.debug("📝 TextSelectionService: Successfully got text via clipboard")
         } else {
-            print("📝 TextSelectionService: No text found via clipboard either")
+            logger.debug("📝 TextSelectionService: No text found via clipboard either")
         }
         
         return clipboardResult
@@ -221,7 +223,7 @@ class TextSelectionService {
         let possibleAccessibilityRestriction = (error == .cannotComplete || error == .notImplemented || error == .apiDisabled)
         
         if possibleAccessibilityRestriction {
-            print("📝 TextSelectionService: Accessibility API error: \(error), possible restriction")
+            logger.debug("📝 TextSelectionService: Accessibility API error: \(error.rawValue, privacy: .public), possible restriction")
             return (nil, ElementInfo(
                 role: nil,
                 isTextField: false,
@@ -235,7 +237,7 @@ class TextSelectionService {
         }
         
         guard error == .success, let focusedAppRef = focusedAppRef else {
-            print("📝 TextSelectionService: No focused app found")
+            logger.debug("📝 TextSelectionService: No focused app found")
             return (nil, ElementInfo(
                 role: nil,
                 isTextField: false,
@@ -260,7 +262,7 @@ class TextSelectionService {
         
         // Another check for accessibility restrictions
         if focusError == .cannotComplete || focusError == .notImplemented || focusError == .apiDisabled {
-            print("📝 TextSelectionService: Focused element error: \(focusError), possible restriction")
+            logger.debug("📝 TextSelectionService: Focused element error: \(focusError.rawValue, privacy: .public), possible restriction")
             return (nil, ElementInfo(
                 role: nil,
                 isTextField: false,
@@ -274,7 +276,7 @@ class TextSelectionService {
         }
         
         guard focusError == .success, let focusedElementRef = focusedElementRef else {
-            print("📝 TextSelectionService: No focused element found")
+            logger.debug("📝 TextSelectionService: No focused element found")
             return (nil, ElementInfo(
                 role: nil,
                 isTextField: false,
@@ -300,7 +302,7 @@ class TextSelectionService {
         
         // Check for accessibility restrictions in text retrieval
         if textError == .cannotComplete || textError == .notImplemented || textError == .apiDisabled {
-            print("📝 TextSelectionService: Selected text error: \(textError), possible restriction")
+            logger.debug("📝 TextSelectionService: Selected text error: \(textError.rawValue, privacy: .public), possible restriction")
             return (nil, ElementInfo(
                 role: nil,
                 isTextField: false,
@@ -314,7 +316,7 @@ class TextSelectionService {
         }
         
         if textError == .success, let text = selectedTextRef as? String {
-            print("📝 TextSelectionService: Found selected text via accessibility: \"\(text)\"")
+            logger.debug("📝 TextSelectionService: Found selected text via accessibility: \"\(text)\"")
             if !text.isEmpty {
                 return (text, ElementInfo(
                     role: getRoleOfElement(focusedElement),
@@ -327,10 +329,10 @@ class TextSelectionService {
                     reason: "Has selected text"
                 ))
             } else {
-                print("📝 TextSelectionService: Selected text was empty")
+                logger.debug("📝 TextSelectionService: Selected text was empty")
             }
         } else {
-            print("📝 TextSelectionService: Could not get selected text, error: \(textError)")
+            logger.debug("📝 TextSelectionService: Could not get selected text, error: \(textError.rawValue, privacy: .public)")
         }
         
         // If we couldn't get selected text, check other properties of the element
@@ -343,8 +345,8 @@ class TextSelectionService {
         
         // Log what we found
         if let role = role {
-            print("📝 TextSelectionService: Element role: \(role)")
-            print("📝 TextSelectionService: isTextField: \(isTextField), isTextualElement: \(isTextualElement), hasValue: \(hasValue), hasTextChildren: \(hasTextChildren)")
+            logger.debug("📝 TextSelectionService: Element role: \(role)")
+            logger.debug("📝 TextSelectionService: isTextField: \(isTextField), isTextualElement: \(isTextualElement), hasValue: \(hasValue), hasTextChildren: \(hasTextChildren)")
         }
         
         // Decision logic for whether we should attempt clipboard copy
@@ -481,7 +483,7 @@ class TextSelectionService {
     }
     
     private func tryGetSelectedTextViaClipboard() -> String? {
-        print("📝 TextSelectionService: Attempting to get selected text via clipboard")
+        logger.debug("📝 TextSelectionService: Attempting to get selected text via clipboard")
         
         // Store the current clipboard content
         let pasteboard = NSPasteboard.general
@@ -530,12 +532,12 @@ class TextSelectionService {
         // Check clipboard
         let newClipboardContent = pasteboard.string(forType: .string)
         
-        print("📝 TextSelectionService: Old clipboard: \(oldClipboardContent?.prefix(20) ?? "(nil)"), New clipboard: \(newClipboardContent?.prefix(20) ?? "(nil)")")
+        logger.debug("📝 TextSelectionService: Old clipboard: \(oldClipboardContent?.prefix(20) ?? "(nil)"), New clipboard: \(newClipboardContent?.prefix(20) ?? "(nil)")")
         
         // Return the new content if it exists and differs from the old one
         if let newContent = newClipboardContent, 
            (oldClipboardContent == nil || newContent != oldClipboardContent) {
-            print("📝 TextSelectionService: Found new clipboard content")
+            logger.debug("📝 TextSelectionService: Found new clipboard content")
             // Restore original clipboard content asynchronously
             // Increase the delay to give more time before restoring
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
@@ -544,7 +546,7 @@ class TextSelectionService {
             return newContent
         }
         
-        print("📝 TextSelectionService: No new clipboard content found")
+        logger.debug("📝 TextSelectionService: No new clipboard content found")
         // Restore original clipboard content
         restoreClipboard()
         return nil

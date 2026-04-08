@@ -109,8 +109,8 @@ class AudioDeviceEnumerationService: ObservableObject {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var deviceName: CFString?
-        var dataSize = UInt32(MemoryLayout<CFString?>.size)
+        var deviceNameRef: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
 
         let status = AudioObjectGetPropertyData(
             deviceID,
@@ -118,14 +118,14 @@ class AudioDeviceEnumerationService: ObservableObject {
             0,
             nil,
             &dataSize,
-            &deviceName
+            &deviceNameRef
         )
 
-        guard status == noErr, let name = deviceName as String? else {
+        guard status == noErr, let unmanaged = deviceNameRef else {
             return nil
         }
 
-        return name
+        return unmanaged.takeRetainedValue() as String
     }
 
     private func getDeviceUID(deviceID: AudioDeviceID) -> String? {
@@ -135,8 +135,8 @@ class AudioDeviceEnumerationService: ObservableObject {
             mElement: kAudioObjectPropertyElementMain
         )
 
-        var deviceUID: CFString?
-        var dataSize = UInt32(MemoryLayout<CFString?>.size)
+        var deviceUIDRef: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
 
         let status = AudioObjectGetPropertyData(
             deviceID,
@@ -144,14 +144,14 @@ class AudioDeviceEnumerationService: ObservableObject {
             0,
             nil,
             &dataSize,
-            &deviceUID
+            &deviceUIDRef
         )
 
-        guard status == noErr, let uid = deviceUID as String? else {
+        guard status == noErr, let unmanaged = deviceUIDRef else {
             return nil
         }
 
-        return uid
+        return unmanaged.takeRetainedValue() as String
     }
 
     // MARK: - Device Change Listener

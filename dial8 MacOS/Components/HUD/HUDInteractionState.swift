@@ -68,7 +68,7 @@ class HUDInteractionState: ObservableObject {
                 break
             }
             if activeInteractionArea == area {
-                activeInteractionArea = .none
+                activeInteractionArea = nil
             }
         }
     }
@@ -80,7 +80,7 @@ class HUDInteractionState: ObservableObject {
             isClearButtonHovered = false
             isCopyButtonHovered = false
             isWindowHovered = false
-            activeInteractionArea = .none
+            activeInteractionArea = nil
         }
     }
     

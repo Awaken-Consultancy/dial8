@@ -1,9 +1,12 @@
 import Foundation
 import AppKit
 import ApplicationServices  // Add this for AX constants
+import os
 
 /// Responsible for inserting text via accessibility APIs
 class AccessibilityTextInsertion {
+    
+    private let logger = Logger(subsystem: "com.dial8", category: "AccessibilityTextInsertion")
     
     private let directTextInsertion: DirectTextInsertion
     private let clipboardTextInsertion: ClipboardTextInsertion
@@ -21,7 +24,7 @@ class AccessibilityTextInsertion {
     func printFocusedElementDebugInfo() -> Bool {
         // First, check if the app has accessibility permissions
         guard checkAccessibilityPermissions() else {
-            print("⚠️ Cannot debug - missing accessibility permissions")
+            logger.warning("Cannot debug - missing accessibility permissions")
             return false
         }
         
@@ -33,7 +36,7 @@ class AccessibilityTextInsertion {
         let appResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedApplicationAttribute as CFString, &appElement)
         
         guard appResult == .success, let appElement = appElement else {
-            print("⚠️ Debug: Could not get focused application (AXError = \(appResult.rawValue))")
+            logger.warning("Debug: Could not get focused application (AXError = \(appResult.rawValue, privacy: .public))")
             return false
         }
         
@@ -43,14 +46,14 @@ class AccessibilityTextInsertion {
         var appPID: pid_t = 0
         AXUIElementGetPid(appAX, &appPID)
         let runningApp = NSRunningApplication(processIdentifier: appPID)
-        print("🔍 Debug: Focused app: \(runningApp?.localizedName ?? "Unknown") (PID: \(appPID))")
+        logger.debug("Debug: Focused app: \(runningApp?.localizedName ?? "Unknown", privacy: .public) (PID: \(appPID, privacy: .public))")
         
         // Get the focused UI element of that app
         var focusedElement: CFTypeRef?
         let focusedResult = AXUIElementCopyAttributeValue(appAX, kAXFocusedUIElementAttribute as CFString, &focusedElement)
         
         guard focusedResult == .success, let focusedElement = focusedElement else {
-            print("⚠️ Debug: No focused UI element found (AXError = \(focusedResult.rawValue))")
+            logger.warning("Debug: No focused UI element found (AXError = \(focusedResult.rawValue, privacy: .public))")
             return false
         }
         
@@ -61,8 +64,7 @@ class AccessibilityTextInsertion {
         let attrResult = AXUIElementCopyAttributeNames(focusedAX, &attributeNames)
         
         if attrResult == .success, let attributeNames = attributeNames as? [String] {
-            print("🔍 Debug: Focused element has \(attributeNames.count) attributes:")
-            
+            logger.debug("Debug: Focused element has \(attributeNames.count, privacy: .public) attributes:")
             for attributeName in attributeNames {
                 var value: CFTypeRef?
                 let valueResult = AXUIElementCopyAttributeValue(focusedAX, attributeName as CFString, &value)
@@ -82,9 +84,9 @@ class AccessibilityTextInsertion {
                         valueStr = String(describing: value)
                     }
                     
-                    print("  • \(attributeName): \(valueStr)")
+                    logger.debug("  \(attributeName, privacy: .public): \(valueStr, privacy: .public)")
                 } else {
-                    print("  • \(attributeName): <error: \(valueResult.rawValue)>")
+                    logger.debug("  \(attributeName, privacy: .public): <error: \(valueResult.rawValue, privacy: .public)>")
                 }
             }
             
@@ -93,20 +95,20 @@ class AccessibilityTextInsertion {
             let roleResult = AXUIElementCopyAttributeValue(focusedAX, kAXRoleAttribute as CFString, &roleValue)
             
             if roleResult == .success, let role = roleValue as? String {
-                print("🔍 Debug: Element role is: \(role)")
+                logger.debug("Debug: Element role is: \(role, privacy: .public)")
                 
                 // Check if it's a text field, text area, or text view
                 let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXTextView"]
                 if textRoles.contains(role) {
-                    print("✅ Debug: This is a text field and should be accessible")
+                    logger.info("Debug: This is a text field and should be accessible")
                 } else {
-                    print("⚠️ Debug: This is NOT a text field. Text operations may not work.")
+                    logger.warning("Debug: This is NOT a text field. Text operations may not work.")
                 }
             }
             
             return true
         } else {
-            print("⚠️ Debug: Could not get element attributes (AXError = \(attrResult.rawValue))")
+            logger.warning("Debug: Could not get element attributes (AXError = \(attrResult.rawValue, privacy: .public))")
             return false
         }
     }
@@ -116,7 +118,7 @@ class AccessibilityTextInsertion {
     /// - Returns: Whether the app has accessibility permissions
     func checkAccessibilityPermissions(shouldPrompt: Bool = true) -> Bool {
         if !AXIsProcessTrusted() {
-            print("⚠️ App does not have Accessibility permissions")
+            logger.warning("App does not have Accessibility permissions")
             
             if shouldPrompt {
                 // Prompt the user to grant accessibility permissions
@@ -125,7 +127,7 @@ class AccessibilityTextInsertion {
                 
                 PermissionManager.shared.openAccessibilitySettings()
                 
-                print("🔐 Opening System Settings to enable Accessibility permissions")
+                logger.info("Opening System Settings to enable Accessibility permissions")
             }
             
             return false
@@ -139,7 +141,7 @@ class AccessibilityTextInsertion {
     private func getFocusedTextField() -> AXUIElement? {
         // First, check if the app has accessibility permissions
         guard checkAccessibilityPermissions() else {
-            print("⚠️ Please enable Accessibility permissions in System Settings > Privacy & Security > Accessibility")
+            logger.warning("Please enable Accessibility permissions in System Settings > Privacy & Security > Accessibility")
             return nil
         }
         
@@ -153,13 +155,13 @@ class AccessibilityTextInsertion {
         guard appResult == .success, let appElement = appElement else {
             // Use the raw error code values since the constants aren't found
             if appResult.rawValue == -25200 {  // kAXErrorNotTrusted = -25200
-                print("⚠️ App is not trusted for Accessibility. Please check System Settings > Privacy & Security > Accessibility.")
+                logger.warning("App is not trusted for Accessibility. Please check System Settings > Privacy & Security > Accessibility.")
                 // Try to prompt for permissions again
-                checkAccessibilityPermissions(shouldPrompt: true)
+                _ = checkAccessibilityPermissions(shouldPrompt: true)
             } else if appResult.rawValue == -25204 {  // kAXErrorCannotComplete = -25204
-                print("⚠️ Cannot complete the operation. This may happen if your app is sandboxed. Remove sandbox for this feature to work.")
+                logger.warning("Cannot complete the operation. This may happen if your app is sandboxed. Remove sandbox for this feature to work.")
             } else {
-                print("⚠️ Could not get focused application (AXError = \(appResult.rawValue))")
+                logger.warning("Could not get focused application (AXError = \(appResult.rawValue, privacy: .public))")
             }
             return nil
         }
@@ -171,7 +173,7 @@ class AccessibilityTextInsertion {
         let focusedResult = AXUIElementCopyAttributeValue(appAX, kAXFocusedUIElementAttribute as CFString, &focusedElement)
         
         guard focusedResult == .success, let focusedElement = focusedElement else {
-            print("⚠️ No focused UI element found (AXError = \(focusedResult.rawValue))")
+            logger.warning("No focused UI element found (AXError = \(focusedResult.rawValue, privacy: .public))")
             return nil
         }
         
@@ -182,19 +184,19 @@ class AccessibilityTextInsertion {
         let roleResult = AXUIElementCopyAttributeValue(focusedAX, kAXRoleAttribute as CFString, &roleValue)
         
         if roleResult == .success, let role = roleValue as? String {
-            print("🔍 Focused element role: \(role)")
+            logger.debug("Focused element role: \(role, privacy: .public)")
             
             // Check if it's a text field, text area, or text view
             let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXTextView"]
             if textRoles.contains(role) {
-                print("✅ Found text field with role: \(role)")
+                logger.info("Found text field with role: \(role, privacy: .public)")
                 return focusedAX
             } else {
-                print("⚠️ Focused element is not a text field (role: \(role))")
+                logger.warning("Focused element is not a text field (role: \(role, privacy: .public))")
                 return nil
             }
         } else {
-            print("⚠️ Failed to get role of focused element (AXError = \(roleResult.rawValue))")
+            logger.warning("Failed to get role of focused element (AXError = \(roleResult.rawValue, privacy: .public))")
             return nil
         }
     }
@@ -216,7 +218,7 @@ class AccessibilityTextInsertion {
         onFinalizedTextUpdated: @escaping (String) -> Void,
         onStreamingStateUpdated: @escaping (Int, Int) -> Void
     ) -> Bool {
-        print("🔤 Accessibility: Temporarily using clipboard paste for all text insertion until text field identification is improved")
+        logger.debug("Accessibility: Temporarily using clipboard paste for all text insertion until text field identification is improved")
         
         // Format text appropriately
         let formattedText = formatTextWithCapitalization(text, isTemp: isTemporary, finalizedText: finalizedText)
@@ -230,293 +232,11 @@ class AccessibilityTextInsertion {
                 updatedFinalizedText += " " + formattedText
             }
             onFinalizedTextUpdated(updatedFinalizedText)
-            print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+            logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
         }
         
         // Always use clipboard insertion for now
         return clipboardTextInsertion.insertText(formattedText, preserveClipboard: true)
-        
-        /* Original implementation commented out until text field identification is improved
-        print("🔤 Accessibility: Attempting to insert text via accessibility API")
-        
-        // APPROACH 0: Handle apps that block accessibility API completely (error -25212)
-        // This needs to be done first before other approaches that might also fail with the same error
-        if let frontmostApp = NSWorkspace.shared.frontmostApplication {
-            let appName = frontmostApp.localizedName ?? "Unknown"
-            
-            // Check if this is a known restricted app like Cursor
-            if knownRestrictedApps.contains(where: { appName.contains($0) }) || appName == "Cursor" {
-                print("⚠️ Detected Cursor or other known restricted app: \(appName)")
-                
-                // Use clipboard directly for Cursor, as it's known to block accessibility
-                let success = useClipboardFallback(
-                    text,
-                    isTemporary: isTemporary,
-                    finalizedText: finalizedText,
-                    onFinalizedTextUpdated: onFinalizedTextUpdated
-                )
-                
-                if success {
-                    print("✅ Successfully inserted text using clipboard for \(appName)")
-                    return true
-                }
-            }
-            
-            let appElement = AXUIElementCreateApplication(frontmostApp.processIdentifier)
-            
-            // Try to directly set the text using frontmost app's accessibility element
-            let formattedText = formatTextWithCapitalization(text, isTemp: isTemporary, finalizedText: finalizedText)
-            
-            // Try to find focused element in this app using a direct approach
-            var focusedElement: CFTypeRef?
-            let focusedResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
-            
-            if focusedResult == .success, let focusedElement = focusedElement {
-                let element = focusedElement as! AXUIElement
-                
-                // First try normal insertion
-                let success = insertTextUsingValueAttribute(
-                    text,
-                    element: element,
-                    isTemporary: isTemporary,
-                    finalizedText: finalizedText,
-                    streamingInsertedText: streamingInsertedText,
-                    onFinalizedTextUpdated: onFinalizedTextUpdated,
-                    onStreamingStateUpdated: onStreamingStateUpdated
-                )
-                
-                if success {
-                    return true
-                }
-                
-                // Then try restricted access fallback
-                let fallbackSuccess = insertTextWithRestrictedReadAccess(
-                    text,
-                    element: element,
-                    isTemporary: isTemporary,
-                    finalizedText: finalizedText,
-                    onFinalizedTextUpdated: onFinalizedTextUpdated
-                )
-                
-                if fallbackSuccess {
-                    return true
-                }
-            } else if focusedResult.rawValue == -25212 {
-                // If we get this error, it means the app completely blocks accessibility API
-                print("⚠️ App completely restricts accessibility (Error = -25212), attempting special clipboard insertion")
-                
-                // Try fallback with clipboard
-                let success = useClipboardFallback(
-                    text,
-                    isTemporary: isTemporary,
-                    finalizedText: finalizedText,
-                    onFinalizedTextUpdated: onFinalizedTextUpdated
-                )
-                
-                if success {
-                    return true
-                }
-                
-                // SPECIAL APPROACH: Try to find textfields directly in main window (not relying on focus)
-                var windowsRef: CFTypeRef?
-                let windowsResult = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef)
-                
-                if windowsResult == .success, let windows = windowsRef as? [AXUIElement], !windows.isEmpty {
-                    // Try each window to find any text field
-                    for window in windows {
-                        if let textField = findFirstTextFieldInElement(window) {
-                            print("✅ Found a textfield in window by direct search")
-                            
-                            // Try direct write approach
-                            let directSuccess = insertTextWithRestrictedReadAccess(
-                                text,
-                                element: textField,
-                                isTemporary: isTemporary,
-                                finalizedText: finalizedText,
-                                onFinalizedTextUpdated: onFinalizedTextUpdated
-                            )
-                            
-                            if directSuccess {
-                                return true
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // APPROACH 1: Try to get and use a focused text field element
-        if let focusedElement = getFocusedTextField() {
-            print("✅ Found standard text field")
-            let success = insertTextUsingValueAttribute(
-                text,
-                element: focusedElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                streamingInsertedText: streamingInsertedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated,
-                onStreamingStateUpdated: onStreamingStateUpdated
-            )
-            
-            // If successful, return immediately
-            if success {
-                return true
-            }
-            
-            // If not successful, try the direct write fallback for apps with restricted read access
-            print("⚠️ Standard insertion failed, trying restricted access fallback...")
-            let fallbackSuccess = insertTextWithRestrictedReadAccess(
-                text,
-                element: focusedElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated
-            )
-            
-            if fallbackSuccess {
-                return true
-            }
-        }
-        
-        // APPROACH 2: If no text field found, try to find any editable element
-        if let editableElement = findAnyEditableElement() {
-            print("✅ Found editable element")
-            let success = insertTextUsingValueAttribute(
-                text,
-                element: editableElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                streamingInsertedText: streamingInsertedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated,
-                onStreamingStateUpdated: onStreamingStateUpdated
-            )
-            
-            // If successful, return immediately
-            if success {
-                return true
-            }
-            
-            // If not successful, try the direct write fallback
-            print("⚠️ Standard insertion failed for editable element, trying restricted access fallback...")
-            let fallbackSuccess = insertTextWithRestrictedReadAccess(
-                text,
-                element: editableElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated
-            )
-            
-            if fallbackSuccess {
-                return true
-            }
-        }
-
-        // APPROACH 3: If still no success, try to find text input within a web area
-        if let webTextElement = findWebTextInput() {
-            print("✅ Found web text input")
-            let success = insertTextUsingValueAttribute(
-                text,
-                element: webTextElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                streamingInsertedText: streamingInsertedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated,
-                onStreamingStateUpdated: onStreamingStateUpdated
-            )
-            
-            // If successful, return immediately
-            if success {
-                return true
-            }
-            
-            // If not successful, try the direct write fallback
-            print("⚠️ Standard insertion failed for web element, trying restricted access fallback...")
-            let fallbackSuccess = insertTextWithRestrictedReadAccess(
-                text,
-                element: webTextElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated
-            )
-            
-            if fallbackSuccess {
-                return true
-            }
-        }
-        
-        // APPROACH 4: Try to find using the AXFocused attribute directly on the application
-        if let appElement = getApplicationElement(),
-           let focusedElement = getElementWithFocusedAttribute(appElement) {
-            print("✅ Found element with AXFocused attribute")
-            let success = insertTextUsingValueAttribute(
-                text,
-                element: focusedElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                streamingInsertedText: streamingInsertedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated,
-                onStreamingStateUpdated: onStreamingStateUpdated
-            )
-            
-            // If successful, return immediately
-            if success {
-                return true
-            }
-            
-            // If not successful, try the direct write fallback
-            print("⚠️ Standard insertion failed for focused element, trying restricted access fallback...")
-            let fallbackSuccess = insertTextWithRestrictedReadAccess(
-                text,
-                element: focusedElement,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated
-            )
-            
-            if fallbackSuccess {
-                return true
-            }
-        }
-        
-        // APPROACH 5: Try the frontmost application's main window
-        if let appElement = getApplicationElement(),
-           let mainWindow = getMainWindow(appElement),
-           let textField = findFirstTextFieldInElement(mainWindow) {
-            print("✅ Found text field in main window")
-            let success = insertTextUsingValueAttribute(
-                text,
-                element: textField,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                streamingInsertedText: streamingInsertedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated,
-                onStreamingStateUpdated: onStreamingStateUpdated
-            )
-            
-            // If successful, return immediately
-            if success {
-                return true
-            }
-            
-            // If not successful, try the direct write fallback
-            print("⚠️ Standard insertion failed for window text field, trying restricted access fallback...")
-            let fallbackSuccess = insertTextWithRestrictedReadAccess(
-                text,
-                element: textField,
-                isTemporary: isTemporary,
-                finalizedText: finalizedText,
-                onFinalizedTextUpdated: onFinalizedTextUpdated
-            )
-            
-            if fallbackSuccess {
-                return true
-            }
-        }
-        
-        // If all accessibility methods failed, fall back to clipboard as a last resort
-        print("⚠️ All accessibility methods failed")
-        return false
-        */
     }
     
     /// Special handling for apps that restrict read access but allow write access
@@ -534,11 +254,11 @@ class AccessibilityTextInsertion {
         finalizedText: String,
         onFinalizedTextUpdated: @escaping (String) -> Void
     ) -> Bool {
-        print("🔄 Attempting fallback for apps with restricted read access...")
+        logger.debug("Attempting fallback for apps with restricted read access...")
         
         // Format text with appropriate capitalization
         let formattedText = formatTextWithCapitalization(text, isTemp: isTemporary, finalizedText: finalizedText)
-        print("🔄 Using \(isTemporary ? "temporary" : "final") text directly with capitalization: \"\(formattedText)\"")
+        logger.debug("Using \(isTemporary ? "temporary" : "final", privacy: .public) text directly with capitalization: \"\(formattedText, privacy: .public)\"")
         
         // For temporary text, we usually don't update the finalized text
         if !isTemporary {
@@ -550,11 +270,11 @@ class AccessibilityTextInsertion {
                 updatedFinalizedText += " " + formattedText
             }
             onFinalizedTextUpdated(updatedFinalizedText)
-            print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+            logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
         }
         
         // Try to directly write to the element without reading its current value
-        print("🔤 Attempting to set text via accessibility API despite read error: \"\(formattedText)\"")
+        logger.debug("Attempting to set text via accessibility API despite read error: \"\(formattedText, privacy: .public)\"")
         
         // Determine what value to set based on whether this is temporary or final text
         let valueToSet: String
@@ -574,34 +294,34 @@ class AccessibilityTextInsertion {
         let setResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, valueToSet as CFTypeRef)
         
         if setResult == .success {
-            print("✅ Successfully wrote text despite being unable to read current value")
+            logger.info("Successfully wrote text despite being unable to read current value")
             return true
         } else {
-            print("⚠️ Failed to set text with kAXValueAttribute (Error = \(setResult.rawValue))")
+            logger.warning("Failed to set text with kAXValueAttribute (Error = \(setResult.rawValue, privacy: .public))")
             
             // APPROACH 2: Try using AXSelectedTextAttribute instead
-            print("🔄 Trying alternate attribute: AXSelectedText")
+            logger.debug("Trying alternate attribute: AXSelectedText")
             let setSelectedResult = AXUIElementSetAttributeValue(element, "AXSelectedText" as CFString, valueToSet as CFTypeRef)
             
             if setSelectedResult == .success {
-                print("✅ Successfully wrote text using AXSelectedText attribute")
+                logger.info("Successfully wrote text using AXSelectedText attribute")
                 return true
             } else {
-                print("⚠️ Failed to set text with AXSelectedText (Error = \(setSelectedResult.rawValue))")
+                logger.warning("Failed to set text with AXSelectedText (Error = \(setSelectedResult.rawValue, privacy: .public))")
                 
                 // APPROACH 3: Try to perform press action on the element first
-                print("🔄 Trying to press element before setting text")
+                logger.debug("Trying to press element before setting text")
                 AXUIElementPerformAction(element, "AXPress" as CFString)
                 
                 // Try once more to set the value after pressing
                 let secondSetResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, valueToSet as CFTypeRef)
                 
                 if secondSetResult == .success {
-                    print("✅ Successfully wrote text after pressing element")
+                    logger.info("Successfully wrote text after pressing element")
                     return true
                 }
                 
-                print("❌ Failed to write text after all attempts (Error = \(secondSetResult.rawValue))")
+                logger.error("Failed to write text after all attempts (Error = \(secondSetResult.rawValue, privacy: .public))")
                 return false
             }
         }
@@ -618,11 +338,11 @@ class AccessibilityTextInsertion {
         let appResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedApplicationAttribute as CFString, &appElement)
         
         guard appResult == .success, let appElement = appElement else {
-            print("⚠️ Could not get focused application (AXError = \(appResult.rawValue))")
+            logger.warning("Could not get focused application (AXError = \(appResult.rawValue, privacy: .public))")
             return nil
         }
         
-        return appElement as! AXUIElement
+        return unsafeBitCast(appElement, to: AXUIElement.self)
     }
     
     /// Helper function to get an element with the AXFocused attribute set to true
@@ -643,7 +363,7 @@ class AccessibilityTextInsertion {
         let isFocusedResult = AXUIElementCopyAttributeValue(focusedAX, kAXFocusedAttribute as CFString, &isFocusedRef)
         
         if isFocusedResult == .success, let isFocused = isFocusedRef as? Bool, isFocused {
-            print("✅ Found element with AXFocused = true")
+            logger.info("Found element with AXFocused = true")
             return focusedAX
         }
         
@@ -659,7 +379,7 @@ class AccessibilityTextInsertion {
         let windowResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &windowElement)
         
         if windowResult == .success, let windowElement = windowElement {
-            return windowElement as! AXUIElement
+            return unsafeBitCast(windowElement, to: AXUIElement.self)
         }
         
         // If that fails, try to get the first window from the windows array
@@ -676,7 +396,13 @@ class AccessibilityTextInsertion {
     /// Helper function to find the first text field in an element
     /// - Parameter element: The parent element to search in
     /// - Returns: The text field element, or nil if none was found
-    private func findFirstTextFieldInElement(_ element: AXUIElement) -> AXUIElement? {
+    private func findFirstTextFieldInElement(_ element: AXUIElement, depth: Int = 0, maxDepth: Int = 10) -> AXUIElement? {
+        // Stop recursion if we've exceeded the maximum depth
+        if depth >= maxDepth {
+            logger.warning("findFirstTextFieldInElement reached max depth (\(maxDepth, privacy: .public)), stopping recursion")
+            return nil
+        }
+
         // Get the role of the element
         var roleValue: CFTypeRef?
         let roleResult = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue)
@@ -703,7 +429,7 @@ class AccessibilityTextInsertion {
         
         if childrenResult == .success, let children = childrenRef as? [AXUIElement] {
             for child in children {
-                if let textField = findFirstTextFieldInElement(child) {
+                if let textField = findFirstTextFieldInElement(child, depth: depth + 1, maxDepth: maxDepth) {
                     return textField
                 }
             }
@@ -752,21 +478,21 @@ class AccessibilityTextInsertion {
         if shouldCapitalize && !isCommonCapitalizedWord {
             let firstChar = text.prefix(1).uppercased()
             let restOfText = text.dropFirst()
-            print("💬 (Accessibility) Capitalized first letter: \"\(firstChar + restOfText)\" (previous ended with sentence punctuation)")
+            logger.debug("💬 (Accessibility) Capitalized first letter: \"\(firstChar + restOfText)\" (previous ended with sentence punctuation)")
             return firstChar + restOfText
         } else if isCommonCapitalizedWord {
             // Preserve capitalization for words like "I"
-            print("💬 (Accessibility) Preserved capitalization for common word: \"\(firstWord)\"")
+            logger.debug("💬 (Accessibility) Preserved capitalization for common word: \"\(firstWord)\"")
             return text
         } else {
             // Force lowercase for the first letter unless it's at the start of a sentence
             if !text.isEmpty && text.prefix(1).uppercased() == text.prefix(1) {
                 let firstChar = text.prefix(1).lowercased()
                 let restOfText = text.dropFirst()
-                print("💬 (Accessibility) Forced lowercase for first letter: \"\(firstChar + restOfText)\" (previous: \"\(trimmedFinalText)\")")
+                logger.debug("💬 (Accessibility) Forced lowercase for first letter: \"\(firstChar + restOfText)\" (previous: \"\(trimmedFinalText)\")")
                 return firstChar + restOfText
             } else {
-                print("💬 (Accessibility) Keeping original case: \"\(text)\" (previous: \"\(trimmedFinalText)\")")
+                logger.debug("💬 (Accessibility) Keeping original case: \"\(text)\" (previous: \"\(trimmedFinalText)\")")
                 return text
             }
         }
@@ -783,7 +509,7 @@ class AccessibilityTextInsertion {
         let appResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedApplicationAttribute as CFString, &appElement)
         
         guard appResult == .success, let appElement = appElement else {
-            print("⚠️ Could not get focused application (AXError = \(appResult.rawValue))")
+            logger.warning("⚠️ Could not get focused application (AXError = \(appResult.rawValue))")
             return nil
         }
         
@@ -794,7 +520,7 @@ class AccessibilityTextInsertion {
         let focusedResult = AXUIElementCopyAttributeValue(appAX, kAXFocusedUIElementAttribute as CFString, &focusedElement)
         
         guard focusedResult == .success, let focusedElement = focusedElement else {
-            print("⚠️ No focused UI element found (AXError = \(focusedResult.rawValue))")
+            logger.warning("⚠️ No focused UI element found (AXError = \(focusedResult.rawValue))")
             return nil
         }
         
@@ -805,7 +531,7 @@ class AccessibilityTextInsertion {
         let editableResult = AXUIElementCopyAttributeValue(focusedAX, "AXEditable" as CFString, &isEditableRef)
         
         if editableResult == .success, let isEditable = isEditableRef as? Bool, isEditable {
-            print("✅ Found editable element")
+            logger.debug("✅ Found editable element")
             return focusedAX
         }
         
@@ -814,18 +540,18 @@ class AccessibilityTextInsertion {
         let valueResult = AXUIElementCopyAttributeValue(focusedAX, kAXValueAttribute as CFString, &valueRef)
         
         if valueResult == .success && valueRef != nil {
-            print("✅ Found element with value attribute")
+            logger.debug("✅ Found element with value attribute")
             return focusedAX
         }
         
-        print("⚠️ No editable element found")
+        logger.warning("⚠️ No editable element found")
         return nil
     }
     
     /// Finds a text input within a web area (for browsers)
     /// - Returns: A text input element within a web area, or nil if none found
     private func findWebTextInput() -> AXUIElement? {
-        print("🔍 Looking for text input within web content...")
+        logger.debug("🔍 Looking for text input within web content...")
         
         // Create a system-wide AX element
         let systemElement = AXUIElementCreateSystemWide()
@@ -835,7 +561,7 @@ class AccessibilityTextInsertion {
         let appResult = AXUIElementCopyAttributeValue(systemElement, kAXFocusedApplicationAttribute as CFString, &appElement)
         
         guard appResult == .success, let appElement = appElement else {
-            print("⚠️ Could not get focused application (AXError = \(appResult.rawValue))")
+            logger.warning("⚠️ Could not get focused application (AXError = \(appResult.rawValue))")
             return nil
         }
         
@@ -846,7 +572,7 @@ class AccessibilityTextInsertion {
         let focusedResult = AXUIElementCopyAttributeValue(appAX, kAXFocusedUIElementAttribute as CFString, &focusedElement)
         
         guard focusedResult == .success, let focusedElement = focusedElement else {
-            print("⚠️ No focused UI element found (AXError = \(focusedResult.rawValue))")
+            logger.warning("⚠️ No focused UI element found (AXError = \(focusedResult.rawValue))")
             return nil
         }
         
@@ -857,10 +583,10 @@ class AccessibilityTextInsertion {
         let roleResult = AXUIElementCopyAttributeValue(focusedAX, kAXRoleAttribute as CFString, &roleValue)
         
         if roleResult == .success, let role = roleValue as? String {
-            print("🔍 Focused element role: \(role)")
+            logger.debug("🔍 Focused element role: \(role)")
             
             if role == "AXWebArea" {
-                print("✅ Found web area")
+                logger.debug("✅ Found web area")
                 
                 // Look for a focused node within the web area
                 var focusedNodeRef: CFTypeRef?
@@ -874,13 +600,13 @@ class AccessibilityTextInsertion {
                     let nodeRoleResult = AXUIElementCopyAttributeValue(focusedNodeElement, kAXRoleAttribute as CFString, &nodeRoleValue)
                     
                     if nodeRoleResult == .success, let nodeRole = nodeRoleValue as? String {
-                        print("🔍 Focused node role: \(nodeRole)")
+                        logger.debug("🔍 Focused node role: \(nodeRole)")
                         
                         // Check for common text input roles in web content
                         let webTextRoles: Set<String> = ["AXTextField", "AXTextArea", "AXStaticText", "AXTextFieldWithCompletion"]
                         
                         if webTextRoles.contains(nodeRole) {
-                            print("✅ Found text input in web area with role: \(nodeRole)")
+                            logger.debug("✅ Found text input in web area with role: \(nodeRole)")
                             return focusedNodeElement
                         }
                         
@@ -889,7 +615,7 @@ class AccessibilityTextInsertion {
                         let editableResult = AXUIElementCopyAttributeValue(focusedNodeElement, "AXEditable" as CFString, &isEditableRef)
                         
                         if editableResult == .success, let isEditable = isEditableRef as? Bool, isEditable {
-                            print("✅ Found editable element in web area")
+                            logger.debug("✅ Found editable element in web area")
                             return focusedNodeElement
                         }
                         
@@ -898,7 +624,7 @@ class AccessibilityTextInsertion {
                         let contentEditableResult = AXUIElementCopyAttributeValue(focusedNodeElement, "AXIsContentEditable" as CFString, &contentEditableRef)
                         
                         if contentEditableResult == .success, let isContentEditable = contentEditableRef as? Bool, isContentEditable {
-                            print("✅ Found content-editable element in web area")
+                            logger.debug("✅ Found content-editable element in web area")
                             return focusedNodeElement
                         }
                     }
@@ -906,18 +632,24 @@ class AccessibilityTextInsertion {
                 
                 // If we couldn't find a text input through the focused node,
                 // try to find any text input within the web area
-                return findTextInputInChildren(focusedAX)
+                return findTextInputInChildren(focusedAX, depth: 0)
             }
         }
         
-        print("⚠️ No web text input found")
+        logger.warning("⚠️ No web text input found")
         return nil
     }
     
     /// Recursively searches for a text input within an element's children
     /// - Parameter element: The parent element to search
     /// - Returns: A text input element, or nil if none found
-    private func findTextInputInChildren(_ element: AXUIElement) -> AXUIElement? {
+    private func findTextInputInChildren(_ element: AXUIElement, depth: Int = 0, maxDepth: Int = 10) -> AXUIElement? {
+        // Stop recursion if we've exceeded the maximum depth
+        if depth >= maxDepth {
+            logger.warning("⚠️ findTextInputInChildren reached max depth (\(maxDepth)), stopping recursion")
+            return nil
+        }
+
         // Get all children of the element
         var childrenRef: CFTypeRef?
         let childrenResult = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
@@ -941,7 +673,7 @@ class AccessibilityTextInsertion {
                     let focusedResult = AXUIElementCopyAttributeValue(child, kAXFocusedAttribute as CFString, &focusedRef)
                     
                     if focusedResult == .success, let isFocused = focusedRef as? Bool, isFocused {
-                        print("✅ Found focused text input in children with role: \(role)")
+                        logger.debug("✅ Found focused text input in children with role: \(role)")
                         return child
                     }
                 }
@@ -956,7 +688,7 @@ class AccessibilityTextInsertion {
                     let focusedResult = AXUIElementCopyAttributeValue(child, kAXFocusedAttribute as CFString, &focusedRef)
                     
                     if focusedResult == .success, let isFocused = focusedRef as? Bool, isFocused {
-                        print("✅ Found focused editable element in children")
+                        logger.debug("✅ Found focused editable element in children")
                         return child
                     }
                 }
@@ -971,14 +703,14 @@ class AccessibilityTextInsertion {
                     let focusedResult = AXUIElementCopyAttributeValue(child, kAXFocusedAttribute as CFString, &focusedRef)
                     
                     if focusedResult == .success, let isFocused = focusedRef as? Bool, isFocused {
-                        print("✅ Found focused content-editable element in children")
+                        logger.debug("✅ Found focused content-editable element in children")
                         return child
                     }
                 }
             }
             
             // Recursively check this child's children
-            if let textInput = findTextInputInChildren(child) {
+            if let textInput = findTextInputInChildren(child, depth: depth + 1, maxDepth: maxDepth) {
                 return textInput
             }
         }
@@ -1011,7 +743,7 @@ class AccessibilityTextInsertion {
         
         if result == .success, let currentValueRef = currentValueRef {
             if let currentText = currentValueRef as? String {
-                print("🔤 Current text from accessibility API: \"\(currentText)\"")
+                logger.debug("🔤 Current text from accessibility API: \"\(currentText)\"")
                 
                 let newText: String
                 var updatedFinalizedText = finalizedText
@@ -1026,7 +758,7 @@ class AccessibilityTextInsertion {
                                         !text.hasPrefix(" ")
                         let space = needsSpace ? " " : ""
                         newText = finalizedText + space + text
-                        print("🔄 Preserved finalized text and appended temporary text")
+                        logger.debug("🔄 Preserved finalized text and appended temporary text")
                     } else {
                         // Just append the text
                         // Only add a space if currentText is not empty, doesn't end with whitespace,
@@ -1077,17 +809,17 @@ class AccessibilityTextInsertion {
                         }
                     }
                     
-                    print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+                    logger.debug("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
                 }
                 
                 // Set the new value on the element
                 let setResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, newText as CFTypeRef)
                 
                 if setResult == .success {
-                    print("✅ Successfully set text via accessibility API: \"\(newText)\"")
+                    logger.debug("✅ Successfully set text via accessibility API: \"\(newText)\"")
                     return true
                 } else {
-                    print("⚠️ Failed to set text via accessibility API (AXError = \(setResult.rawValue))")
+                    logger.warning("⚠️ Failed to set text via accessibility API (AXError = \(setResult.rawValue))")
                 }
             }
         }
@@ -1101,7 +833,7 @@ class AccessibilityTextInsertion {
     /// - Returns: Whether the completion was successful
     func completeTextInsertion(finalizedText: String) -> Bool {
         guard let focusedElement = getFocusedTextField() else {
-            print("⚠️ No text field found for accessibility completion")
+            logger.warning("⚠️ No text field found for accessibility completion")
             return false
         }
         
@@ -1111,7 +843,7 @@ class AccessibilityTextInsertion {
         
         if result == .success, let currentValueRef = currentValueRef {
             if let currentText = currentValueRef as? String {
-                print("🔤 Completing text insertion with current text: \"\(currentText)\"")
+                logger.debug("🔤 Completing text insertion with current text: \"\(currentText)\"")
                 
                 // Check if we need to preserve finalized text
                 if !finalizedText.isEmpty && !currentText.hasPrefix(finalizedText) {
@@ -1120,7 +852,7 @@ class AccessibilityTextInsertion {
                     let needsSpace = !finalizedText.hasSuffix(" ") && !currentText.hasPrefix(" ")
                     let space = needsSpace ? " " : ""
                     let newText = finalizedText + space + currentText
-                    print("🔤 Setting text via accessibility API: \"\(newText)\"")
+                    logger.debug("🔤 Setting text via accessibility API: \"\(newText)\"")
                     let setResult = AXUIElementSetAttributeValue(focusedElement, kAXValueAttribute as CFString, newText as CFTypeRef)
                     return setResult == .success
                 }
@@ -1130,21 +862,21 @@ class AccessibilityTextInsertion {
             }
         }
         
-        print("⚠️ Failed to get current value from accessibility API (Error = \(result.rawValue))")
+        logger.warning("⚠️ Failed to get current value from accessibility API (Error = \(result.rawValue))")
         
         // Special handling for error -25212 (some apps restrict read access but allow write)
         if result.rawValue == -25212 && !finalizedText.isEmpty {
-            print("🔄 Attempting fallback for apps with restricted read access during completion...")
+            logger.debug("🔄 Attempting fallback for apps with restricted read access during completion...")
             
             // Try setting just the finalized text
-            print("🔤 Attempting to set finalized text via accessibility API despite read error: \"\(finalizedText)\"")
+            logger.debug("🔤 Attempting to set finalized text via accessibility API despite read error: \"\(finalizedText)\"")
             let setResult = AXUIElementSetAttributeValue(focusedElement, kAXValueAttribute as CFString, finalizedText as CFTypeRef)
             
             if setResult == .success {
-                print("✅ Successfully wrote finalized text despite being unable to read current value")
+                logger.debug("✅ Successfully wrote finalized text despite being unable to read current value")
                 return true
             } else {
-                print("❌ Failed to write finalized text (Error = \(setResult.rawValue))")
+                logger.error("❌ Failed to write finalized text (Error = \(setResult.rawValue))")
             }
         }
         
@@ -1156,7 +888,7 @@ class AccessibilityTextInsertion {
     ///   - text: The text to type
     /// - Returns: Whether the typing simulation was successful
     private func simulateTypingText(_ text: String) -> Bool {
-        print("📋 Using clipboard insertion instead of typing simulation for text: \"\(text)\"")
+        logger.debug("📋 Using clipboard insertion instead of typing simulation for text: \"\(text)\"")
         
         // Use the ClipboardTextInsertion service instead of key simulation
         return clipboardTextInsertion.insertText(text, preserveClipboard: true)
@@ -1175,7 +907,7 @@ class AccessibilityTextInsertion {
         finalizedText: String,
         onFinalizedTextUpdated: @escaping (String) -> Void
     ) -> Bool {
-        print("🔤 Accessibility: Attempting to replace temporary text via accessibility API")
+        logger.debug("🔤 Accessibility: Attempting to replace temporary text via accessibility API")
         
         // First check if this is a known accessibility-restricted app like Cursor
         if let frontmostApp = NSWorkspace.shared.frontmostApplication {
@@ -1183,10 +915,10 @@ class AccessibilityTextInsertion {
             
             // Check if this is a known restricted app like Cursor
             if knownRestrictedApps.contains(where: { appName.contains($0) }) || appName == "Cursor" {
-                print("⚠️ Detected Cursor or other known restricted app: \(appName) for text replacement")
+                logger.warning("⚠️ Detected Cursor or other known restricted app: \(appName) for text replacement")
                 
                 // For text replacement in Cursor, use clipboard
-                print("📋 Using clipboard strategy for \(appName)")
+                logger.debug("📋 Using clipboard strategy for \(appName)")
                 
                 return useClipboardForReplacement(
                     temporaryText: temporaryText,
@@ -1200,7 +932,7 @@ class AccessibilityTextInsertion {
         // APPROACH 0: Handle apps that block accessibility API completely
         // Try the direct NSWorkspace approach first
         if let frontmostApp = NSWorkspace.shared.frontmostApplication {
-            print("📱 Using frontmost app direct approach for: \(frontmostApp.localizedName ?? "Unknown")")
+            logger.debug("📱 Using frontmost app direct approach for: \(frontmostApp.localizedName ?? "Unknown")")
             let appElement = AXUIElementCreateApplication(frontmostApp.processIdentifier)
             
             // Try getting focused element 
@@ -1212,7 +944,7 @@ class AccessibilityTextInsertion {
                 let element = focusedElement as! AXUIElement
                 
                 // Try direct write with the final text (simplest approach)
-                print("✨ Attempting direct replacement with frontmost app's focused element")
+                logger.debug("✨ Attempting direct replacement with frontmost app's focused element")
                 let directSuccess = insertTextWithRestrictedReadAccess(
                     finalText,
                     element: element,
@@ -1227,7 +959,7 @@ class AccessibilityTextInsertion {
             } else if focusedResult.rawValue == -25212 {
                 // If we can't access focused element due to accessibility restrictions,
                 // try our special clipboard fallback
-                print("⚠️ App blocks access to focused element with error -25212, trying clipboard")
+                logger.warning("⚠️ App blocks access to focused element with error -25212, trying clipboard")
                 
                 // For apps with error -25212, try our specialized fallback that doesn't rely on accessibility API
                 let success = useClipboardForReplacement(
@@ -1245,7 +977,7 @@ class AccessibilityTextInsertion {
         
         // APPROACH 1: Try to get a focused text field element
         if let focusedElement = getFocusedTextField() {
-            print("✅ Found standard text field for replacement")
+            logger.debug("✅ Found standard text field for replacement")
             
             // Get the current value
             var currentValueRef: CFTypeRef?
@@ -1296,7 +1028,7 @@ class AccessibilityTextInsertion {
                 let setResult = AXUIElementSetAttributeValue(focusedElement, kAXValueAttribute as CFString, newText as CFTypeRef)
                 
                 if setResult == .success {
-                    print("✅ Updated text via accessibility API: \"\(newText)\"")
+                    logger.debug("✅ Updated text via accessibility API: \"\(newText)\"")
                     
                     // Update the finalized text
                     var updatedFinalizedText = finalizedText
@@ -1309,12 +1041,12 @@ class AccessibilityTextInsertion {
                     
                     return true
                 } else {
-                    print("⚠️ Failed to set text via accessibility API (AXError = \(setResult.rawValue))")
+                    logger.warning("⚠️ Failed to set text via accessibility API (AXError = \(setResult.rawValue))")
                 }
             } else if result.rawValue == -25212 {
                 // Special case for apps that restrict reading but allow writing (like Messages)
-                print("⚠️ Failed to get current value from accessibility API (Error = \(result.rawValue))")
-                print("🔄 Attempting fallback for apps with restricted read access...")
+                logger.warning("⚠️ Failed to get current value from accessibility API (Error = \(result.rawValue))")
+                logger.debug("🔄 Attempting fallback for apps with restricted read access...")
                 
                 // Directly insert the final text
                 return insertTextWithRestrictedReadAccess(
@@ -1329,10 +1061,10 @@ class AccessibilityTextInsertion {
         
         // APPROACH 2: If no text field found, try to find any editable element
         if let editableElement = findAnyEditableElement() {
-            print("✅ Found editable element for replacement")
+            logger.debug("✅ Found editable element for replacement")
             
             // Try the direct write fallback for restricted access
-            print("⚠️ Trying restricted access fallback for editable element...")
+            logger.warning("⚠️ Trying restricted access fallback for editable element...")
             let fallbackSuccess = insertTextWithRestrictedReadAccess(
                 finalText,
                 element: editableElement,
@@ -1348,10 +1080,10 @@ class AccessibilityTextInsertion {
         
         // APPROACH 3: Try to find text input within a web area
         if let webTextElement = findWebTextInput() {
-            print("✅ Found web text input for replacement")
+            logger.debug("✅ Found web text input for replacement")
             
             // Try the direct write fallback
-            print("⚠️ Trying restricted access fallback for web element...")
+            logger.warning("⚠️ Trying restricted access fallback for web element...")
             let fallbackSuccess = insertTextWithRestrictedReadAccess(
                 finalText,
                 element: webTextElement,
@@ -1368,10 +1100,10 @@ class AccessibilityTextInsertion {
         // APPROACH 4: Try with the focused attribute
         if let appElement = getApplicationElement(),
            let focusedElement = getElementWithFocusedAttribute(appElement) {
-            print("✅ Found element with AXFocused attribute for replacement")
+            logger.debug("✅ Found element with AXFocused attribute for replacement")
             
             // Try the direct write fallback
-            print("⚠️ Trying restricted access fallback for focused element...")
+            logger.warning("⚠️ Trying restricted access fallback for focused element...")
             let fallbackSuccess = insertTextWithRestrictedReadAccess(
                 finalText,
                 element: focusedElement,
@@ -1386,7 +1118,7 @@ class AccessibilityTextInsertion {
         }
         
         // If all approaches fail, fall back to inserting the text as new
-        print("⚠️ Could not replace temporary text, inserting as new text")
+        logger.warning("⚠️ Could not replace temporary text, inserting as new text")
         return insertText(
             finalText,
             isTemporary: false,
@@ -1410,7 +1142,7 @@ class AccessibilityTextInsertion {
         finalizedText: String,
         onFinalizedTextUpdated: @escaping (String) -> Void
     ) -> Bool {
-        print("📋 Using clipboard fallback for completely restricted app")
+        logger.debug("📋 Using clipboard fallback for completely restricted app")
         
         // Format text appropriately
         let formattedText = formatTextWithCapitalization(text, isTemp: isTemporary, finalizedText: finalizedText)
@@ -1425,7 +1157,7 @@ class AccessibilityTextInsertion {
                 updatedFinalizedText += " " + formattedText
             }
             onFinalizedTextUpdated(updatedFinalizedText)
-            print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+            logger.debug("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
         }
         
         // Use clipboard insertion to paste the text
@@ -1446,7 +1178,7 @@ class AccessibilityTextInsertion {
         finalizedText: String,
         onFinalizedTextUpdated: @escaping (String) -> Void
     ) -> Bool {
-        print("📋 Using clipboard for text replacement in restricted app")
+        logger.debug("📋 Using clipboard for text replacement in restricted app")
         
         // Format text appropriately
         let formattedText = formatTextWithCapitalization(finalText, isTemp: false, finalizedText: finalizedText)
@@ -1468,7 +1200,7 @@ class AccessibilityTextInsertion {
                         updatedFinalizedText += " " + formattedText
                     }
                     onFinalizedTextUpdated(updatedFinalizedText)
-                    print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+                    logger.debug("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
                     return true
                 }
             }

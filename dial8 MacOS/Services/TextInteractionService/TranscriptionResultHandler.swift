@@ -1,6 +1,8 @@
 import Foundation
+import os
 
 class TranscriptionResultHandler {
+    private let logger = Logger(subsystem: "com.dial8", category: "TranscriptionResultHandler")
     static let shared = TranscriptionResultHandler()
     
     
@@ -17,7 +19,7 @@ class TranscriptionResultHandler {
     /// Set block mode state
     func setBlockMode(_ blockMode: Bool) {
         isBlockMode = blockMode
-        print("📝 TranscriptionResultHandler: Block mode set to \(blockMode)")
+        logger.debug("📝 TranscriptionResultHandler: Block mode set to \(blockMode)")
         
         // Clear accumulated text when switching modes
         if !blockMode && !accumulatedText.isEmpty {
@@ -35,7 +37,7 @@ class TranscriptionResultHandler {
     /// Clear accumulated text
     func clearAccumulatedText() {
         accumulatedText = ""
-        print("📝 TranscriptionResultHandler: Cleared accumulated text")
+        logger.debug("📝 TranscriptionResultHandler: Cleared accumulated text")
     }
     
     /// Insert accumulated text and clear buffer
@@ -55,11 +57,11 @@ class TranscriptionResultHandler {
         
         if cleaningEnabled && TranscriptionCleaner.shared.isAvailable() && !text.isEmpty {
             do {
-                print("🧹 TranscriptionResultHandler: Cleaning streaming text...")
-                print("📝 Original text: \"\(text)\"")
+                logger.debug("🧹 TranscriptionResultHandler: Cleaning streaming text...")
+                logger.debug("📝 Original text: \"\(text)\"")
                 let cleanedText = try await TranscriptionCleaner.shared.cleanTranscription(text)
-                print("✨ Cleaned text: \"\(cleanedText)\"")
-                print("✅ TranscriptionResultHandler: Text cleaned successfully")
+                logger.debug("✨ Cleaned text: \"\(cleanedText)\"")
+                logger.debug("✅ TranscriptionResultHandler: Text cleaned successfully")
                 
                 await MainActor.run {
                     // Apply text replacements after AI cleaning but before insertion
@@ -67,7 +69,7 @@ class TranscriptionResultHandler {
                     self.handleTranscriptionInsertion(processedText, isTemporary: isTemporary)
                 }
             } catch {
-                print("⚠️ TranscriptionResultHandler: Cleaning failed, using original text")
+                logger.warning("⚠️ TranscriptionResultHandler: Cleaning failed, using original text")
                 await MainActor.run {
                     // Apply text replacements even when cleaning fails
                     let processedText = TextReplacementService.shared.applyReplacements(to: text)
@@ -102,11 +104,11 @@ class TranscriptionResultHandler {
         
         if cleaningEnabled && TranscriptionCleaner.shared.isAvailable() {
             do {
-                print("🧹 TranscriptionResultHandler: Cleaning accumulated text...")
-                print("📝 Original text: \"\(textToClean)\"")
+                logger.debug("🧹 TranscriptionResultHandler: Cleaning accumulated text...")
+                logger.debug("📝 Original text: \"\(textToClean)\"")
                 let cleanedText = try await TranscriptionCleaner.shared.cleanTranscription(textToClean)
-                print("✨ Cleaned text: \"\(cleanedText)\"")
-                print("✅ TranscriptionResultHandler: Text cleaned successfully")
+                logger.debug("✨ Cleaned text: \"\(cleanedText)\"")
+                logger.debug("✅ TranscriptionResultHandler: Text cleaned successfully")
                 
                 await MainActor.run {
                     // Apply text replacements after AI cleaning but before insertion
@@ -114,7 +116,7 @@ class TranscriptionResultHandler {
                     self.insertAccumulatedText(processedText)
                 }
             } catch {
-                print("⚠️ TranscriptionResultHandler: Cleaning failed, using original text")
+                logger.warning("⚠️ TranscriptionResultHandler: Cleaning failed, using original text")
                 await MainActor.run {
                     // Apply text replacements even when cleaning fails
                     let processedText = TextReplacementService.shared.applyReplacements(to: textToClean)
@@ -138,7 +140,7 @@ class TranscriptionResultHandler {
             }
         }
         
-        print("📝 TranscriptionResultHandler: Flushed accumulated text")
+        logger.debug("📝 TranscriptionResultHandler: Flushed accumulated text")
     }
     
     /// Handles transcription for streaming mode
@@ -147,7 +149,7 @@ class TranscriptionResultHandler {
     ///   - recordingStartTime: When the recording started
     ///   - isTemporary: Whether this is a temporary transcription that might be replaced
     func handleTranscriptionResult(_ transcription: String, recordingStartTime: Date?, isTemporary: Bool = false) {
-        print("🔤 TranscriptionResultHandler: Processing \(isTemporary ? "temporary" : "final") text: \"\(transcription)\"")
+        logger.debug("🔤 TranscriptionResultHandler: Processing \(isTemporary ? "temporary" : "final") text: \"\(transcription)\"")
         
         queue.async { [weak self] in
             guard let self = self else { return }
@@ -161,7 +163,7 @@ class TranscriptionResultHandler {
                     } else {
                         self.accumulatedText += " " + textToAdd
                     }
-                    print("📝 TranscriptionResultHandler: Accumulated text in block mode: \"\(self.accumulatedText)\"")
+                    self.logger.debug("📝 TranscriptionResultHandler: Accumulated text in block mode: \"\(self.accumulatedText)\"")
                 } else if !self.isBlockMode {
                     // In streaming mode, clean and insert text
                     if !isTemporary {
@@ -171,8 +173,9 @@ class TranscriptionResultHandler {
                         }
                     } else {
                         // For temporary text, insert without cleaning to maintain responsiveness
-                        DispatchQueue.main.async {
-                            print("📲 TranscriptionResultHandler: Inserting temporary text: \"\(transcription)\"")
+                        DispatchQueue.main.async { [weak self] in
+                            guard let self = self else { return }
+                            self.logger.debug("📲 TranscriptionResultHandler: Inserting temporary text: \"\(transcription)\"")
                             // Apply text replacements to temporary text for immediate feedback
                             let processedText = TextReplacementService.shared.applyReplacements(to: transcription)
                             self.handleTranscriptionInsertion(processedText, isTemporary: true)
@@ -199,13 +202,13 @@ class TranscriptionResultHandler {
     
     /// Helper method to handle text insertion
     private func handleTranscriptionInsertion(_ text: String, isTemporary: Bool = false) {
-        print("📝 Inserting \(isTemporary ? "temporary" : "final") text: \"\(text)\"")
+        logger.debug("📝 Inserting \(isTemporary ? "temporary" : "final") text: \"\(text)\"")
         
         // Get the current language from UserDefaults
         let language = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "auto"
 
         // Use the TextInsertionService to insert the text
-        print("🔤 Calling TextInsertionService to insert \(isTemporary ? "temporary" : "final") text with language: \(language)")
+        logger.debug("🔤 Calling TextInsertionService to insert \(isTemporary ? "temporary" : "final") text with language: \(language)")
         TextInsertionService.shared.insertText(text, language: language, isTemporary: isTemporary)
         
         // Add to history if it's final text (not temporary)
@@ -218,9 +221,7 @@ class TranscriptionResultHandler {
     
     /// Reset the current speech session
     func resetSession() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            
+        queue.async {
             // Reset the text tracking state in TextInsertionService
             DispatchQueue.main.async {
                 TextInsertionService.shared.resetTextTrackingState()

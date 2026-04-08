@@ -293,10 +293,10 @@ class StatusBarController: NSObject, ObservableObject {
 
         guard status == noErr else { return nil }
 
-        // Get the device name
+        // Get the device name (Core Audio returns a retained CFString)
         propertyAddress.mSelector = kAudioDevicePropertyDeviceNameCFString
-        var deviceName: CFString?
-        dataSize = UInt32(MemoryLayout<CFString?>.size)
+        var deviceNameRef: Unmanaged<CFString>?
+        dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
 
         let nameStatus = AudioObjectGetPropertyData(
             deviceID,
@@ -304,11 +304,11 @@ class StatusBarController: NSObject, ObservableObject {
             0,
             nil,
             &dataSize,
-            &deviceName
+            &deviceNameRef
         )
 
-        guard nameStatus == noErr, let name = deviceName as String? else { return nil }
-        return name
+        guard nameStatus == noErr, let unmanaged = deviceNameRef else { return nil }
+        return unmanaged.takeRetainedValue() as String
     }
 }
 

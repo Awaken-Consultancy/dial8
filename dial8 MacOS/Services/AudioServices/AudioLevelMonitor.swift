@@ -1,9 +1,11 @@
 import Foundation
 import AVFoundation
 import Accelerate
+import os
 
 /// Monitors audio levels and provides smoothed amplitude data for visualization
 class AudioLevelMonitor: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioLevelMonitor")
     static let shared = AudioLevelMonitor()
     
     // Published properties for UI binding
@@ -43,7 +45,7 @@ class AudioLevelMonitor: ObservableObject {
                 return
             } else if elapsed < warmupDuration + 0.1 {
                 // First buffer after warmup
-                print("🎤 Warmup complete, processing audio (elapsed: \(elapsed)s)")
+                logger.debug("🎤 Warmup complete, processing audio (elapsed: \(elapsed)s)")
             }
         }
         

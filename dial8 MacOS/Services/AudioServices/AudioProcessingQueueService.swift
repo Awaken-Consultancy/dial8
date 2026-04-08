@@ -6,9 +6,15 @@ import os.log
 class AudioProcessingQueueService: ObservableObject {
     private let logger = Logger(subsystem: "com.dial8", category: "AudioProcessingQueueService")
 
+    // Maximum number of items allowed in the processing queue to prevent memory buildup
+    static let maxQueueSize = 50
+
     // Processing queue for audio segments
     private var processingQueue: [(URL, Date)] = []
-    private var isCurrentlyProcessing = false
+
+    // Thread-safe access to isCurrentlyProcessing
+    private let processingFlagQueue = DispatchQueue(label: "com.dial8.processingFlag")
+    private var _isCurrentlyProcessing = false
 
     // Throttling for audio processing
     private var lastProcessingTime: Date?
@@ -36,7 +42,7 @@ class AudioProcessingQueueService: ObservableObject {
         guard let userInfo = notification.userInfo,
               let audioURL = userInfo["audioURL"] as? URL,
               let timestamp = userInfo["timestamp"] as? Date else {
-            print("Error: Invalid notification data for audio segment processing")
+            self.logger.error("Invalid notification data for audio segment processing")
             return
         }
         
@@ -45,6 +51,13 @@ class AudioProcessingQueueService: ObservableObject {
     
     func addToProcessingQueue(audioURL: URL, timestamp: Date) {
         DispatchQueue.main.async {
+            // Check if queue exceeds max size before adding
+            if self.processingQueue.count >= Self.maxQueueSize {
+                let droppedItem = self.processingQueue.removeFirst()
+                self.logger.warning("Queue exceeded maximum size of \(Self.maxQueueSize). Dropping oldest item.")
+                // Clean up the dropped audio file
+                try? FileManager.default.removeItem(at: droppedItem.0)
+            }
             self.processingQueue.append((audioURL, timestamp))
             self.queueLength = self.processingQueue.count
             self.processNextInQueue()
@@ -52,17 +65,21 @@ class AudioProcessingQueueService: ObservableObject {
     }
     
     func processNextInQueue() {
-        // If already processing or queue is empty, return
-        guard !isCurrentlyProcessing, !processingQueue.isEmpty else { return }
+        // Thread-safe read of isCurrentlyProcessing
+        var currentlyProcessing: Bool = false
+        processingFlagQueue.sync { currentlyProcessing = _isCurrentlyProcessing }
 
-        // Mark as processing
-        isCurrentlyProcessing = true
+        // If already processing or queue is empty, return
+        guard !currentlyProcessing, !processingQueue.isEmpty else { return }
+
+        // Mark as processing (thread-safe)
+        processingFlagQueue.sync { _isCurrentlyProcessing = true }
 
         // Get next item to process
         let (audioURL, timestamp) = processingQueue.removeFirst()
         queueLength = processingQueue.count
 
-        logger.debug("Processing queued audio segment...")
+        self.logger.debug("Processing queued audio segment...")
 
         // Use high-priority queue for transcription
         let useLocalSpeechModel = self.audioTranscriptionService.useLocalSpeechModel
@@ -82,7 +99,7 @@ class AudioProcessingQueueService: ObservableObject {
                     try? FileManager.default.removeItem(at: audioURL)
 
                     DispatchQueue.main.async {
-                        self.isCurrentlyProcessing = false
+                        self.processingFlagQueue.sync { self._isCurrentlyProcessing = false }
                         self.processNextInQueue()
                     }
                 }
@@ -112,7 +129,7 @@ class AudioProcessingQueueService: ObservableObject {
                 }
 
                 // Mark as done and process next
-                self.isCurrentlyProcessing = false
+                self.processingFlagQueue.sync { self._isCurrentlyProcessing = false }
                 self.processNextInQueue()
             }
         }
@@ -136,7 +153,7 @@ class AudioProcessingQueueService: ObservableObject {
             let audioData = try Data(contentsOf: fileURL)
             data.append(audioData)
         } catch {
-            print("Error reading audio file: \(error)")
+            self.logger.error("Error reading audio file: \(error.localizedDescription)")
             completion()
             return
         }
@@ -150,7 +167,7 @@ class AudioProcessingQueueService: ObservableObject {
             }
             
             if let error = error {
-                print("Error sending audio: \(error)")
+                self.logger.error("Error sending audio: \(error.localizedDescription)")
                 completion()
                 return
             }
@@ -158,7 +175,7 @@ class AudioProcessingQueueService: ObservableObject {
             if let data = data, let jsonString = String(data: data, encoding: .utf8) {
                 DispatchQueue.main.async {
                     let transcription = TranscriptionUtils.extractTranscription(from: jsonString)
-                    print("Transcription received: \(transcription)")
+                    self.logger.debug("Transcription received: \(transcription, privacy: .private)")
 
                     self.audioTranscriptionService.handleTranscriptionResult(transcription, recordingStartTime: Date())
                 }

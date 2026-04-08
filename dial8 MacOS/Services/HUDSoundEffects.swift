@@ -1,8 +1,10 @@
 import Cocoa
 import AVFoundation
 import Combine
+import os
 
 class HUDSoundEffects: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "HUDSoundEffects")
     static let shared = HUDSoundEffects()
     
     // Available sound options
@@ -103,7 +105,7 @@ class HUDSoundEffects: ObservableObject {
     // Alternative method using custom sound files
     func loadCustomSound(named name: String, fileExtension: String = "mp3") -> NSSound? {
         guard let soundURL = Bundle.main.url(forResource: name, withExtension: fileExtension) else {
-            print("Sound file '\(name).\(fileExtension)' not found")
+            logger.debug("Sound file '\(name).\(fileExtension)' not found")
             return nil
         }
         

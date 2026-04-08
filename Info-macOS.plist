@@ -67,10 +67,6 @@
 	<false/>
 	<key>SUEnableInstallerLauncherService</key>
 	<true/>
-	<key>SUEnableJavaScript</key>
-	<true/>
-	<key>SUEnableSystemProfiling</key>
-	<true/>
 	<key>SUFeedURL</key>
 	<string>YOUR_UPDATE_SERVER_URL/appcast.xml</string>
 	<key>SUPublicEDKey</key>

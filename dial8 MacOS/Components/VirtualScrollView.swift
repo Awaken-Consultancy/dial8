@@ -55,11 +55,11 @@ struct VirtualScrollView<Item: Identifiable, Content: View>: View {
                     viewHeight = geometry.size.height
                     updateVisibleRange(viewHeight: geometry.size.height)
                 }
-                .onChange(of: geometry.size.height) { newHeight in
+                .onChange(of: geometry.size.height) { _, newHeight in
                     viewHeight = newHeight
                     updateVisibleRange(viewHeight: newHeight)
                 }
-                .onChange(of: items.count) { _ in
+                .onChange(of: items.count) { _, _ in
                     updateVisibleRange(viewHeight: viewHeight)
                 }
             }
@@ -152,7 +152,7 @@ struct DynamicVirtualScrollView<Item: Identifiable, Content: View>: View {
                 viewHeight = geometry.size.height
                 updateVisibleIndices(viewHeight: geometry.size.height)
             }
-            .onChange(of: geometry.size.height) { newHeight in
+            .onChange(of: geometry.size.height) { _, newHeight in
                 viewHeight = newHeight
                 updateVisibleIndices(viewHeight: newHeight)
             }

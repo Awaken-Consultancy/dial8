@@ -101,8 +101,6 @@ struct SettingsRowView: View {
             return "textformat.alt"
         case .support:
             return "megaphone"
-        default:
-            return "circle"
         }
     }
     

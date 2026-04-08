@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+private let logger = Logger(subsystem: "com.dial8", category: "AudioWaveformView")
+
 
 /// Audio waveform visualization for the HUD
 struct AudioWaveformView: View {
@@ -39,10 +42,10 @@ struct AudioWaveformView: View {
             animatedBars = Array(repeating: minBarHeight, count: barCount)
             appearTime = Date()
             updateCount = 0
-            print("🎵 AudioWaveformView appeared - Level monitor active: \(levelMonitor.isActive)")
+            logger.debug("🎵 AudioWaveformView appeared - Level monitor active: \(levelMonitor.isActive)")
         }
         .onDisappear {
-            print("🎵 AudioWaveformView disappeared")
+            logger.debug("🎵 AudioWaveformView disappeared")
             appearTime = nil
             updateCount = 0
         }

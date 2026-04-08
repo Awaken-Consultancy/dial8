@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import Carbon
 import ApplicationServices
+import os
 
 /// Core service for handling text insertion across different UI controls
 class TextInsertionService {
@@ -10,6 +11,8 @@ class TextInsertionService {
     
     /// Shared singleton instance
     static let shared = TextInsertionService()
+    
+    private let logger = Logger(subsystem: "com.dial8", category: "TextInsertionService")
     
     // MARK: - Properties
     
@@ -53,7 +56,7 @@ class TextInsertionService {
     func registerTextField(_ textField: NSTextField) {
         self.activeTextField = textField
         self.activeTextView = nil
-        print("🔄 Registered text field for text insertion")
+        logger.debug("Registered text field for text insertion")
     }
     
     /// Register a text view to receive transcription text
@@ -61,14 +64,14 @@ class TextInsertionService {
     func registerTextView(_ textView: NSTextView) {
         self.activeTextView = textView
         self.activeTextField = nil
-        print("🔄 Registered text view for text insertion")
+        logger.debug("Registered text view for text insertion")
     }
     
     /// Unregister any active text components
     func unregisterTextComponents() {
         self.activeTextField = nil
         self.activeTextView = nil
-        print("🔄 Unregistered all text components")
+        logger.debug("Unregistered all text components")
     }
     
     /// Handles a transcription result from speech recognition
@@ -77,15 +80,15 @@ class TextInsertionService {
     ///   - isFinal: Whether this is a finalized transcription
     ///   - language: The language of the transcription
     func handleTranscriptionResult(_ text: String, isFinal: Bool, language: String = "en") {
-        print("\(isFinal ? "✅" : "🔄") \(isFinal ? "Final" : "Interim") transcription: \"\(text)\"")
+        logger.debug("\(isFinal ? "Final" : "Interim", privacy: .public) transcription: \"\(text, privacy: .public)\"")
         
         guard !text.isEmpty else {
-            print("⚠️ Empty transcription, ignoring")
+            logger.warning("Empty transcription, ignoring")
             return
         }
         
         if isFinal {
-            print("✅ Processing final transcription: \"\(text)\"")
+            logger.info("Processing final transcription: \"\(text, privacy: .public)\"")
             
             // Check for severe repetition issues before inserting
             if repetitionHandler.detectAndFixProblematicPattern(
@@ -93,7 +96,7 @@ class TextInsertionService {
                 activeTextView: activeTextView,
                 finalizedText: finalizedText
             ) {
-                print("🧹 Applied repetition fix")
+                logger.debug("Applied repetition fix")
             } else {
                 // Format the text before insertion
                 let formattedText = textFormatter.formatText(
@@ -109,10 +112,10 @@ class TextInsertionService {
                 if !formattedText.isEmpty {
                     // Try to replace temporary text with this final text first
                     if !streamingInsertedText.isEmpty {
-                        print("🔄 Replacing temporary text: \"\(streamingInsertedText)\" with finalized: \"\(formattedText)\"")
+                        logger.debug("Replacing temporary text: \"\(self.streamingInsertedText, privacy: .public)\" with finalized: \"\(formattedText, privacy: .public)\"")
                         replaceTemporaryText(streamingInsertedText, with: formattedText)
                     } else {
-                        print("🔄 Inserting final text: \"\(formattedText)\"")
+                        logger.debug("Inserting final text: \"\(formattedText, privacy: .public)\"")
                         insertText(formattedText, isTemporary: false)
                     }
                 }
@@ -126,7 +129,7 @@ class TextInsertionService {
             textFormatter.resetSegmentTracking()
         } else {
             // For temporary transcription (streaming mode), accumulate the text
-            print("🔄 Processing temporary transcription: \"\(text)\"")
+            logger.debug("Processing temporary transcription: \"\(text, privacy: .public)\"")
             
             // Clean and check for overlapping text
             let cleanedText = textFormatter.cleanText(text)
@@ -135,10 +138,10 @@ class TextInsertionService {
             if !nonOverlappingText.isEmpty {
                 // If we have previous temporary text, replace it
                 if !streamingInsertedText.isEmpty {
-                    print("🔄 Replacing previous temporary text: \"\(streamingInsertedText)\" with: \"\(nonOverlappingText)\"")
+                    logger.debug("Replacing previous temporary text: \"\(self.streamingInsertedText, privacy: .public)\" with: \"\(nonOverlappingText, privacy: .public)\"")
                     replaceTemporaryText(streamingInsertedText, with: nonOverlappingText)
                 } else {
-                    print("🔄 Inserting temporary text: \"\(nonOverlappingText)\"")
+                    logger.debug("Inserting temporary text: \"\(nonOverlappingText, privacy: .public)\"")
                     insertText(nonOverlappingText, isTemporary: true)
                 }
                 
@@ -160,7 +163,7 @@ class TextInsertionService {
         // Reset text segment tracking
         textFormatter.resetSegmentTracking()
         
-        print("🧹 Reset all text insertion state")
+        logger.info("Reset all text insertion state")
     }
     
     /// Get the finalized text
@@ -192,7 +195,7 @@ class TextInsertionService {
         // Set flag to indicate this is a new recording session
         isNewRecordingSession = true
         
-        print("🎤 Reset text insertion state for new recording session")
+        logger.info("Reset text insertion state for new recording session")
     }
     
     /// Direct text insertion method for use with NSTextField
@@ -230,7 +233,7 @@ class TextInsertionService {
         // Add a space at the end of the final text to prevent connecting with next paste
         let finalTextWithSpace = finalText + " "
         
-        print("🔄 Replacing temporary text: \"\(temporaryText)\" with \"\(finalTextWithSpace)\"")
+        logger.debug("Replacing temporary text: \"\(temporaryText, privacy: .public)\" with \"\(finalTextWithSpace, privacy: .public)\"")
         
         // Use text field if available
         if let textField = activeTextField {
@@ -295,7 +298,7 @@ class TextInsertionService {
         // If this is final text (not temporary), append a space to prevent connecting with next paste
         let textToInsert = isTemporary ? text : text + " "
         
-        print("🔄 Inserting \(isTemporary ? "temporary" : "final") text: \"\(textToInsert)\"")
+        logger.debug("Inserting \(isTemporary ? "temporary" : "final", privacy: .public) text: \"\(textToInsert, privacy: .public)\"")
         
         // Use text field if available
         if let textField = activeTextField {
@@ -368,7 +371,7 @@ class TextInsertionService {
         onFinalizedTextUpdated: @escaping (String) -> Void,
         onStreamingStateUpdated: @escaping (Int, Int) -> Void
     ) -> Bool {
-        print("📋 Attempting to insert text via clipboard operation")
+        logger.debug("Attempting to insert text via clipboard operation")
         
         // If this is final text (not temporary), append a space to prevent connecting with next paste
         let textToInsert = isTemporary ? text : text + " "
@@ -387,15 +390,15 @@ class TextInsertionService {
                 updatedFinalizedText += textToInsert
             }
             onFinalizedTextUpdated(updatedFinalizedText)
-            print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+            logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
         }
         
         if success {
-            print("✅ Successfully inserted text via clipboard operation")
+            logger.info("Successfully inserted text via clipboard operation")
             return true
         }
         
-        print("⚠️ All text insertion methods failed")
+        logger.warning("All text insertion methods failed")
         return false
     }
 }

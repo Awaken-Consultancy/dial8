@@ -1,8 +1,10 @@
 import Foundation
 import Speech
 import AVFoundation
+import os
 
 class AppleSpeechRecognizer: NSObject, ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AppleSpeechRecognizer")
     static let shared = AppleSpeechRecognizer()
     
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
@@ -43,19 +45,20 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
     }
     
     private func requestAuthorization() {
-        SFSpeechRecognizer.requestAuthorization { status in
-            DispatchQueue.main.async {
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 switch status {
                 case .authorized:
-                    print("Speech recognition authorized")
+                    self.logger.debug("Speech recognition authorized")
                 case .denied:
-                    print("Speech recognition authorization denied")
+                    self.logger.debug("Speech recognition authorization denied")
                 case .restricted:
-                    print("Speech recognition restricted on this device")
+                    self.logger.debug("Speech recognition restricted on this device")
                 case .notDetermined:
-                    print("Speech recognition not yet authorized")
+                    self.logger.debug("Speech recognition not yet authorized")
                 @unknown default:
-                    print("Unknown authorization status")
+                    self.logger.debug("Unknown authorization status")
                 }
             }
         }
@@ -71,7 +74,7 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
             silenceThreshold = meetingSilenceThreshold
         }
         
-        print("🎙️ Set transcription silence threshold: \(silenceThreshold) seconds")
+        logger.debug("🎙️ Set transcription silence threshold: \(self.silenceThreshold) seconds")
         
         if silenceTimer != nil {
             resetSilenceTimer()
@@ -80,18 +83,18 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
     
     func startListening(with engine: AVAudioEngine) {
         guard engine.isRunning else {
-            print("Cannot start listening - engine is not running")
+            logger.debug("Cannot start listening - engine is not running")
             return
         }
         
         guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
-            print("Speech recognition not authorized")
+            logger.debug("Speech recognition not authorized")
             requestAuthorization()
             return
         }
         
         if isListening && self.audioEngine === engine && recognitionTask != nil {
-            print("Already listening with valid task")
+            logger.debug("Already listening with valid task")
             return
         }
         
@@ -104,20 +107,20 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
         self.audioEngine = engine
         
         guard let speechRecognizer = self.speechRecognizer, speechRecognizer.isAvailable else {
-            print("Speech recognizer not available")
+            logger.debug("Speech recognizer not available")
             return
         }
         
         self.recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
         guard let recognitionRequest = self.recognitionRequest else {
-            print("Failed to create recognition request")
+            logger.debug("Failed to create recognition request")
             return
         }
         
         recognitionRequest.shouldReportPartialResults = true
         recognitionRequest.taskHint = .dictation
         
-        print("Setting up speech recognition using shared audio buffers")
+        logger.debug("Setting up speech recognition using shared audio buffers")
         
         self.recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self = self else { return }
@@ -133,7 +136,7 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
             }
             
             if let error = error {
-                print("Speech recognition error: \(error)")
+                self.logger.debug("Speech recognition error: \(error)")
                 if (error as NSError).domain != "kAFAssistantErrorDomain" {
                     self.stopListening()
                 }
@@ -141,7 +144,7 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
         }
         
         self.isListening = true
-        print("Speech recognition started successfully")
+        logger.debug("Speech recognition started successfully")
     }
     
     func appendAudioBuffer(_ buffer: AVAudioPCMBuffer) {
@@ -150,7 +153,7 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
     }
     
     func stopListening() {
-        print("Speech recognition stopping - cleaning up resources")
+        logger.debug("Speech recognition stopping - cleaning up resources")
         
         silenceTimer?.invalidate()
         silenceTimer = nil
@@ -158,26 +161,26 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
         if let request = recognitionRequest {
             request.endAudio()
             recognitionRequest = nil
-            print("Ended recognition request")
+            logger.debug("Ended recognition request")
         }
         
         if let task = recognitionTask {
             task.finish()
             task.cancel()
             recognitionTask = nil
-            print("Cancelled recognition task")
+            logger.debug("Cancelled recognition task")
         }
         
         audioEngine = nil
         isListening = false
         isSpeechDetected = false
         
-        print("Speech recognition stopped and all resources cleaned up")
+        logger.debug("Speech recognition stopped and all resources cleaned up")
     }
     
     private func resetSilenceTimer() {
         silenceTimer?.invalidate()
-        silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: self.silenceThreshold, repeats: false) { [weak self] _ in
             guard let self = self else { return }
             if self.isSpeechDetected {
                 self.isSpeechDetected = false
@@ -193,7 +196,7 @@ class AppleSpeechRecognizer: NSObject, ObservableObject {
             silenceThreshold = threshold
             defaultSilenceThreshold = threshold
             meetingSilenceThreshold = threshold
-            print("🎙️ Updated pause detection threshold to: \(threshold) seconds")
+            logger.debug("🎙️ Updated pause detection threshold to: \(threshold) seconds")
             
             if isListening && silenceTimer != nil {
                 resetSilenceTimer()

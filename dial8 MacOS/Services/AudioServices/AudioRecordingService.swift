@@ -1,8 +1,10 @@
 import Foundation
 import AVFoundation
 import Combine
+import os
 
 class AudioRecordingService: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioRecordingService")
     // Published properties for state
     @Published private(set) var isRecording = false
     @Published private(set) var isStoppingRecording = false
@@ -21,11 +23,11 @@ class AudioRecordingService: ObservableObject {
     }
     
     func beginRecording() {
-        print("AudioRecordingService: Beginning recording using AudioEngine buffer")
+        logger.debug("AudioRecordingService: Beginning recording using AudioEngine buffer")
         
         // Initialize recording start time
         self.recordingStartTime = Date()
-        print("⏱️ Recording start time initialized")
+        logger.debug("⏱️ Recording start time initialized")
         
         let tempDir = FileManager.default.temporaryDirectory
         self.audioFileURL = tempDir.appendingPathComponent("recording_\(UUID().uuidString).wav")
@@ -47,9 +49,9 @@ class AudioRecordingService: ObservableObject {
         do {
             self.audioFile = try AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
             self.isRecording = true
-            print("Recording started successfully with single audio engine source")
+            logger.debug("Recording started successfully with single audio engine source")
         } catch {
-            print("Failed to create audio file: \(error)")
+            logger.debug("Failed to create audio file: \(error)")
             DispatchQueue.main.async {
                 self.isRecording = false
             }
@@ -66,7 +68,7 @@ class AudioRecordingService: ObservableObject {
             do {
                 try audioFile.write(from: buffer)
             } catch {
-                print("AudioRecordingService: Failed to write buffer: \(error)")
+                logger.debug("AudioRecordingService: Failed to write buffer: \(error)")
             }
         }
     }
@@ -77,7 +79,7 @@ class AudioRecordingService: ObservableObject {
             return 
         }
         
-        print("⏹️ Stopping recording...")
+        logger.debug("⏹️ Stopping recording...")
         
         // Set the stopping flag immediately
         self.isStoppingRecording = true
@@ -116,7 +118,7 @@ class AudioRecordingService: ObservableObject {
     }
     
     func startNewAudioSegment() -> URL? {
-        print("Starting new audio segment...")
+        logger.debug("Starting new audio segment...")
         
         let tempDir = FileManager.default.temporaryDirectory
         let newAudioFileURL = tempDir.appendingPathComponent("recording_\(UUID().uuidString).wav")
@@ -159,11 +161,11 @@ class AudioRecordingService: ObservableObject {
                     self.recordingStartTime = Date()
                 }
                 
-                print("Started new audio segment recording seamlessly")
+                logger.debug("Started new audio segment recording seamlessly")
                 success = true
                 
             } catch {
-                print("Failed to start new audio segment: \(error)")
+                logger.debug("Failed to start new audio segment: \(error)")
                 success = false
             }
         }
@@ -176,9 +178,9 @@ class AudioRecordingService: ObservableObject {
         
         do {
             try FileManager.default.removeItem(at: url)
-            print("Cleaned up temporary audio file at: \(url.lastPathComponent)")
+            logger.debug("Cleaned up temporary audio file at: \(url.lastPathComponent)")
         } catch {
-            print("Failed to clean up temporary file: \(error)")
+            logger.debug("Failed to clean up temporary file: \(error)")
         }
     }
 }

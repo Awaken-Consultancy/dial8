@@ -45,6 +45,9 @@
 
 import Cocoa
 import SwiftUI
+import os
+private let logger = Logger(subsystem: "com.dial8", category: "HUDMainComponent")
+
 
 // Add ViewHeightKey preference key definition
 private struct ViewHeightKey: PreferenceKey {
@@ -96,17 +99,14 @@ class HUDMainController: NSWindowController {
         // The canBecomeKey and canBecomeMain properties are already overridden in HUDWindow
         // Removing direct assignments that were causing errors
         
-        // If this is an NSPanel, set additional properties
-        if let panel = window as? NSPanel {
-            panel.styleMask.insert(.nonactivatingPanel)
-            panel.becomesKeyOnlyIfNeeded = true
-            panel.hidesOnDeactivate = false
-        }
+        // HUDWindow is an NSPanel subclass — set panel-only properties
+        let panel = window as! NSPanel
+        panel.styleMask.insert(.nonactivatingPanel)
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.hidesOnDeactivate = false
         
-        // Configure window with event handler
-        if let interactionState = (hostingView.rootView as? HUDMainView)?.interactionState {
-            window.configure(with: audioManager, interactionState: interactionState)
-        }
+        // Configure window with event handler (same interactionState instance as HUDMainView)
+        window.configure(with: audioManager, interactionState: interactionState)
         
         // Position HUD just above the dock
         if let screen = NSScreen.main {
@@ -146,7 +146,7 @@ class HUDMainController: NSWindowController {
         guard let window = self.window else { return }
 
         // Get the screen where the mouse is currently located
-        var mouseLocation = NSEvent.mouseLocation
+        let mouseLocation = NSEvent.mouseLocation
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
             let screenFrame = screen.frame
 
@@ -161,7 +161,7 @@ class HUDMainController: NSWindowController {
     }
 
     func showAnimated() {
-        print("HUDMainController: showAnimated called")
+        logger.debug("HUDMainController: showAnimated called")
         guard let window = self.window else { return }
         
         // Position HUD just above the dock
@@ -197,7 +197,7 @@ class HUDMainController: NSWindowController {
     }
 
     func hideAnimated() {
-        print("Hiding HUD")
+        logger.debug("Hiding HUD")
         guard !isAnimating else { return }
         isAnimating = true
         
@@ -260,15 +260,15 @@ class HUDMainController: NSWindowController {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        print("HUDMainController: deinitialized")
+        logger.debug("HUDMainController: deinitialized")
     }
 
     override func close() {
-        print("HUDMainController: close called")
+        logger.debug("HUDMainController: close called")
         // Remove content view first to ensure cleanup of animations
         window?.contentView = nil
         window?.close()
-        print("HUDMainController: window closed")
+        logger.debug("HUDMainController: window closed")
     }
 
     @objc private func windowDidMove(_ notification: Notification) {
@@ -560,7 +560,6 @@ struct HUDMainView: View {
             perspective: animationState.perspectiveAmount
         )
         .opacity(animationState.opacity)
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: audioManager.isSpeechDetected)
         .drawingGroup() // Optimize rendering performance
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("HUDShouldAnimateIn"))) { _ in
             animationState.animateIn()

@@ -1,8 +1,10 @@
 import Foundation
 import Combine
 import AVFoundation
+import os
 
 class AudioSegmentationService: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioSegmentationService")
     // Dependencies
     private let recordingService: AudioRecordingService
     private let audioTranscriptionService: AudioTranscriptionService
@@ -20,7 +22,7 @@ class AudioSegmentationService: ObservableObject {
         // In block mode, don't create segments on silence detection
         // Just continue recording as one continuous file
         guard isStreamingMode else { 
-            print("Block mode: Ignoring silence detection, continuing single recording")
+            logger.debug("Block mode: Ignoring silence detection, continuing single recording")
             return 
         }
         

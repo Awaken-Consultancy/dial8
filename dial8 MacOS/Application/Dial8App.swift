@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+
+private let logger = Logger(subsystem: "com.dial8", category: "Dial8App")
 
 #if DEVELOPMENT
 import Foundation // This import is not necessary if you're not using any Foundation types directly
@@ -7,14 +10,14 @@ import Foundation // This import is not necessary if you're not using any Founda
 // Add at the top of the file, outside the main app struct
 extension View {
     func logView(_ message: String) -> some View {
-        print("📱 APP VIEW: \(message)")
+        logger.debug("📱 APP VIEW: \(message)")
         return self
     }
 }
 
 // Add a logging utility
 private func log(_ message: String) {
-    print("📱 APP: \(message)")
+    logger.debug("📱 APP: \(message)")
 }
 
 // Add before the main app struct
@@ -71,7 +74,6 @@ struct ThinkingAloudApp: App {
             
             // Clear UserDefaults
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
-            UserDefaults.standard.synchronize()
             
             // Clear cache directory
             if let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
@@ -107,8 +109,8 @@ struct ThinkingAloudApp: App {
         }
 
         log("Initializing core managers")
-        // Initialize core managers
-        let authManager = AuthenticationManager.shared
+        // Initialize core managers (singleton side effects only)
+        _ = AuthenticationManager.shared
         let windowManager = WindowManager()
         
         // Initialize macOS-specific components
@@ -160,8 +162,8 @@ struct ThinkingAloudApp: App {
         }
         #endif
         
-        // Mark initialization as complete
-        await initManager.markAsInitialized()
+        // Mark initialization as complete (synchronous; no async work inside)
+        initManager.markAsInitialized()
     }
 
     // MARK: - Default Settings
@@ -265,9 +267,9 @@ struct ThinkingAloudApp: App {
             if !granted {
                 // Handle the case where microphone permission is denied
                 // You might show an alert or update the UI accordingly
-                print("Microphone permission was not granted.")
+                logger.debug("Microphone permission was not granted.")
             } else {
-                print("Microphone permission granted.")
+                logger.debug("Microphone permission granted.")
             }
             log(granted ? "✅ Microphone permission granted" : "❌ Microphone permission denied")
         }

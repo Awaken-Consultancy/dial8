@@ -2,8 +2,10 @@ import Foundation
 import AVFoundation
 import Cocoa
 import CoreAudio
+import os
 
 class AudioSessionService {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioSessionService")
     // Callback closures
     var onSessionInterruption: ((Bool) -> Void)?
     var onRouteChange: (() -> Void)?
@@ -50,10 +52,10 @@ class AudioSessionService {
         }
 
         if type == .began {
-            print("Audio session interruption began")
+            logger.debug("Audio session interruption began")
             onSessionInterruption?(true)
         } else if type == .ended {
-            print("Audio session interruption ended")
+            logger.debug("Audio session interruption ended")
             onSessionInterruption?(false)
         }
         #endif
@@ -65,7 +67,7 @@ class AudioSessionService {
         // Note: Check flag without consuming - let reconfigureEngine() reset it when done
         if AudioDeviceEnumerationService.shared.isUserInitiatedDeviceChange {
             lastKnownDeviceUID = getCurrentInputDeviceUID()
-            print("🎧 Audio route change detected (user-initiated, suppressing notification)")
+            logger.debug("🎧 Audio route change detected (user-initiated, suppressing notification)")
             return
         }
 
@@ -73,17 +75,17 @@ class AudioSessionService {
         let currentDeviceUID = getCurrentInputDeviceUID()
         if currentDeviceUID == lastKnownDeviceUID {
             // Device hasn't actually changed - this is just an engine restart
-            print("🎧 Audio config change detected (same device, ignoring)")
+            logger.debug("🎧 Audio config change detected (same device, ignoring)")
             return
         }
 
         // Device actually changed - update tracking and notify
         lastKnownDeviceUID = currentDeviceUID
-        print("🎧 Audio route change detected (system - device changed)")
+        logger.debug("🎧 Audio route change detected (system - device changed)")
 
         // Get the new device name
         let deviceName = getCurrentInputDeviceName()
-        print("🎤 New input device: \(deviceName ?? "Unknown")")
+        logger.debug("🎤 New input device: \(deviceName ?? "Unknown")")
 
         // Call both callbacks
         onDeviceChange?(deviceName)
@@ -121,8 +123,8 @@ class AudioSessionService {
 
         // Get the device UID
         propertyAddress.mSelector = kAudioDevicePropertyDeviceUID
-        var deviceUID: CFString?
-        dataSize = UInt32(MemoryLayout<CFString?>.size)
+        var deviceUIDRef: Unmanaged<CFString>?
+        dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
 
         let uidStatus = AudioObjectGetPropertyData(
             deviceID,
@@ -130,11 +132,11 @@ class AudioSessionService {
             0,
             nil,
             &dataSize,
-            &deviceUID
+            &deviceUIDRef
         )
 
-        guard uidStatus == noErr, let uid = deviceUID as String? else { return nil }
-        return uid
+        guard uidStatus == noErr, let unmanaged = deviceUIDRef else { return nil }
+        return unmanaged.takeRetainedValue() as String
         #else
         return AVAudioSession.sharedInstance().currentRoute.inputs.first?.uid
         #endif
@@ -161,7 +163,7 @@ class AudioSessionService {
         )
         
         guard status == noErr else {
-            print("Failed to get default input device ID: \(status)")
+            logger.debug("Failed to get default input device ID: \(status)")
             return nil
         }
         
@@ -169,8 +171,8 @@ class AudioSessionService {
         propertyAddress.mSelector = kAudioDevicePropertyDeviceNameCFString
         propertyAddress.mScope = kAudioObjectPropertyScopeGlobal
         
-        var deviceName: CFString?
-        dataSize = UInt32(MemoryLayout<CFString?>.size)
+        var deviceNameRef: Unmanaged<CFString>?
+        dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         
         let nameStatus = AudioObjectGetPropertyData(
             deviceID,
@@ -178,15 +180,15 @@ class AudioSessionService {
             0,
             nil,
             &dataSize,
-            &deviceName
+            &deviceNameRef
         )
         
-        guard nameStatus == noErr, let name = deviceName as String? else {
-            print("Failed to get device name: \(nameStatus)")
+        guard nameStatus == noErr, let unmanaged = deviceNameRef else {
+            logger.debug("Failed to get device name: \(nameStatus)")
             return nil
         }
         
-        return name
+        return unmanaged.takeRetainedValue() as String
         #else
         // iOS implementation would use AVAudioSession
         return AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName
@@ -201,6 +203,8 @@ class AudioSessionService {
 }
 
 class AudioDuckingService {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioDuckingService")
+
     // MARK: - Properties
     
     private var originalVolume: Float32?
@@ -218,7 +222,7 @@ class AudioDuckingService {
         
         // Get current system volume
         guard var currentVolume = getSystemVolume() else {
-            print("⚠️ AudioDuckingService: Failed to get current system volume")
+            logger.warning("⚠️ AudioDuckingService: Failed to get current system volume")
             return
         }
         
@@ -233,7 +237,7 @@ class AudioDuckingService {
             let previousDuckedLevel = expected * duckingFactor
             
             if abs(currentVolume - previousDuckedLevel) < 0.1 && abs(currentVolume - expected) > 0.1 {
-                print("⚠️ AudioDuckingService: Detected volume lag. Using expected volume \(expected) instead of current \(currentVolume)")
+                logger.warning("⚠️ AudioDuckingService: Detected volume lag. Using expected volume \(expected) instead of current \(currentVolume)")
                 currentVolume = expected
             }
         }
@@ -247,9 +251,9 @@ class AudioDuckingService {
         // Apply ducked volume
         if setSystemVolume(duckedVolume) {
             isDucked = true
-            print("🔉 AudioDuckingService: Ducked volume to \(duckedVolume) (Original: \(currentVolume))")
+            logger.debug("🔉 AudioDuckingService: Ducked volume to \(duckedVolume) (Original: \(currentVolume))")
         } else {
-            print("⚠️ AudioDuckingService: Failed to set ducked volume")
+            logger.warning("⚠️ AudioDuckingService: Failed to set ducked volume")
         }
     }
     
@@ -258,7 +262,7 @@ class AudioDuckingService {
         
         // Restore original volume
         if setSystemVolume(originalVol) {
-            print("🔊 AudioDuckingService: Restored volume to \(originalVol)")
+            logger.debug("🔊 AudioDuckingService: Restored volume to \(originalVol)")
             isDucked = false
             originalVolume = nil
             
@@ -266,7 +270,7 @@ class AudioDuckingService {
             expectedRestoredVolume = originalVol
             lastUnduckTime = Date()
         } else {
-            print("⚠️ AudioDuckingService: Failed to restore volume")
+            logger.warning("⚠️ AudioDuckingService: Failed to restore volume")
         }
     }
     
@@ -358,7 +362,7 @@ class AudioDuckingService {
         status = AudioObjectIsPropertySettable(deviceID, &propertyAddress, &isSettable)
         
         guard status == noErr && isSettable.boolValue else {
-            print("⚠️ AudioDuckingService: Volume property is not settable")
+            logger.warning("⚠️ AudioDuckingService: Volume property is not settable")
             return false
         }
         

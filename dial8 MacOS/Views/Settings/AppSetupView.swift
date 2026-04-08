@@ -1,9 +1,12 @@
 import SwiftUI
 import AVFoundation
 import Speech
+private let logger = Logger(subsystem: "com.dial8", category: "AppSetupView")
+
 #if os(macOS)
 import AppKit
 import ServiceManagement
+import os
 #endif
 
 struct AppSetupView: View {
@@ -99,7 +102,7 @@ struct AppSetupView: View {
                         title: "Launch at Login",
                         isOn: $launchAtLogin
                     )
-                    .onChange(of: launchAtLogin) { newValue in
+                    .onChange(of: launchAtLogin) { _, newValue in
                         toggleLaunchAtLogin(newValue)
                     }
                 }
@@ -195,13 +198,13 @@ struct AppSetupView: View {
         do {
             if isOn {
                 try SMAppService.mainApp.register()
-                print("Launch at Login enabled")
+                logger.debug("Launch at Login enabled")
             } else {
                 try SMAppService.mainApp.unregister()
-                print("Launch at Login disabled")
+                logger.debug("Launch at Login disabled")
             }
         } catch {
-            print("Failed to \(isOn ? "enable" : "disable") launch at login: \(error.localizedDescription)")
+            logger.debug("Failed to \(isOn ? "enable" : "disable") launch at login: \(error.localizedDescription)")
             
             // Revert the toggle if setting fails
             DispatchQueue.main.async {

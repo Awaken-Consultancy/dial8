@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 #if os(iOS)
 import UIKit
@@ -24,6 +25,7 @@ extension UserDefaults {
 
 #if os(iOS)
 class AppDelegate: UIResponder, UIApplicationDelegate {
+    private let logger = Logger(subsystem: "com.dial8", category: "AppDelegate")
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         return true
     }
@@ -43,6 +45,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 #elseif os(macOS)
 class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStandardUserDriverDelegate {
+    private let logger = Logger(subsystem: "com.dial8", category: "AppDelegate")
+
     var updaterController: SPUStandardUpdaterController!
     private var isCheckingForUpdates = false
 
@@ -92,12 +96,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
                 handle.write(logMessage.data(using: .utf8)!)
             }
         } catch {
-            print("Failed to write to log file: \(error)")
+            logger.debug("Failed to write to log file: \(error)")
         }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        print("🚀 Starting application initialization...")
+        logger.debug("🚀 Starting application initialization...")
         
         // Hide all windows - we only want menu bar functionality
         NSApplication.shared.windows.forEach { window in
@@ -174,7 +178,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
 
     // MARK: - Sparkle Initialization
     private func initializeSparkleUpdater() {
-        print("📦 Initializing Sparkle updater...")
+        logger.debug("📦 Initializing Sparkle updater...")
         
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -198,16 +202,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         // Existing configuration checks...
         if let feedURL = Bundle.main.infoDictionary?["SUFeedURL"] as? String,
            let url = URL(string: feedURL) {
-            print("📡 Feed URL configured: \(url)")
+            logger.debug("📡 Feed URL configured: \(url)")
             // Verify HTTPS
             if url.scheme?.lowercased() != "https" {
-                print("⚠️ Warning: Feed URL should use HTTPS for security")
+                logger.warning("⚠️ Warning: Feed URL should use HTTPS for security")
             }
         }
         
         // Add version checking
         if let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
-            print("📱 Current version: \(currentVersion)")
+            logger.debug("📱 Current version: \(currentVersion)")
             // Check for updates after a short delay
             // DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             //     self?.updaterController.checkForUpdates(nil)
@@ -216,9 +220,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         
         // Verify EdDSA key presence
         if let edKey = Bundle.main.infoDictionary?["SUPublicEDKey"] as? String {
-            print("📝 EdDSA Key found: \(String(edKey.prefix(10)))...")
+            logger.debug("📝 EdDSA Key found: \(String(edKey.prefix(10)))...")
         } else {
-            print("⚠️ Warning: No EdDSA Key found in Info.plist")
+            logger.warning("⚠️ Warning: No EdDSA Key found in Info.plist")
         }
         
         // Configure installation path
@@ -232,23 +236,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         do {
             let resourceValues = try bundleURL.resourceValues(forKeys: [.volumeIsReadOnlyKey])
             if let isReadOnly = resourceValues.volumeIsReadOnly, isReadOnly {
-                print("⚠️ Warning: Application is installed on a read-only volume")
+                logger.warning("⚠️ Warning: Application is installed on a read-only volume")
             }
         } catch {
-            print("❌ Error checking installation directory: \(error)")
+            logger.error("❌ Error checking installation directory: \(error)")
         }
         
         // Log configuration
-        print("✅ Sparkle updater initialized successfully")
+        logger.debug("✅ Sparkle updater initialized successfully")
         if let feedURL = updater.feedURL {
-            print("📡 Feed URL: \(feedURL)")
-            print("🔍 Checking appcast content...")
+            logger.debug("📡 Feed URL: \(feedURL)")
+            logger.debug("🔍 Checking appcast content...")
             checkAppcastContent(url: feedURL)
         }
         
-        print("📋 Update configuration:")
-        print("- Automatic checks enabled: \(updater.automaticallyChecksForUpdates)")
-        print("- Check interval: \(updater.updateCheckInterval) seconds")
+        logger.debug("📋 Update configuration:")
+        logger.debug("- Automatic checks enabled: \(updater.automaticallyChecksForUpdates)")
+        logger.debug("- Check interval: \(updater.updateCheckInterval) seconds")
         
         // Single check for updates
         // DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -264,7 +268,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         
         for key in requiredKeys {
             if Bundle.main.object(forInfoDictionaryKey: key) == nil {
-                print("⚠️ Warning: Missing required key in Info.plist: \(key)")
+                logger.warning("⚠️ Warning: Missing required key in Info.plist: \(key)")
             }
         }
     }
@@ -283,7 +287,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
                 // Deep link handling removed
                 break
             default:
-                print("Unhandled URL: \(urls)")
+                logger.debug("Unhandled URL: \(urls)")
             }
             
             // Activate the existing window instead of creating a new one
@@ -299,16 +303,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
     func requestMicrophonePermission() {
         switch AVCaptureDevice.authorizationStatus(for: AVMediaType.audio) {
         case .authorized:
-            print("Microphone access previously granted")
+            logger.debug("Microphone access previously granted")
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: AVMediaType.audio) { granted in
-                print("Microphone access granted: \(granted)")
+            AVCaptureDevice.requestAccess(for: AVMediaType.audio) { [weak self] granted in
+                self?.logger.debug("Microphone access granted: \(granted)")
                 if !granted {
                     // Notify the user that the app requires microphone access
                 }
             }
         default:
-            print("Microphone access denied or restricted")
+            logger.debug("Microphone access denied or restricted")
             // Inform the user that microphone access is required
         }
     }
@@ -385,7 +389,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
     
     func updater(_ updater: SPUUpdater, didFinishLoading appcast: SUAppcast) {
         isCheckingForUpdates = false
-        print("✅ Successfully loaded appcast")
+        logger.debug("✅ Successfully loaded appcast")
         
         // Only proceed with update UI if there's a newer version available
         if let firstItem = appcast.items.first,
@@ -393,10 +397,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
             
             // Compare versions to determine if we should show any UI
             if firstItem.versionString != currentVersion {
-                print("📦 Update available: \(firstItem.displayVersionString)")
+                logger.debug("📦 Update available: \(firstItem.displayVersionString)")
                 // Let the normal update UI flow continue
             } else {
-                print("✅ Already on latest version: \(currentVersion)")
+                logger.debug("✅ Already on latest version: \(currentVersion)")
                 // Suppress the "up-to-date" UI
                 updater.automaticallyDownloadsUpdates = false
                 return
@@ -404,61 +408,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         }
         
         if let firstItem = appcast.items.first {
-            print("📦 Latest version: \(firstItem.displayVersionString)")
-            print("🔐 Signature: \(firstItem.propertiesDictionary["sparkle:edSignature"] ?? "NO_SIGNATURE")")
+            logger.debug("📦 Latest version: \(firstItem.displayVersionString)")
+            let signatureValue = firstItem.propertiesDictionary["sparkle:edSignature"]
+            let signatureString: String = signatureValue.map { String(describing: $0) } ?? "NO_SIGNATURE"
+            logger.debug("🔐 Signature: \(signatureString)")
             
             // Print more details about the item
-            print("📝 Update details:")
-            print("- Version: \(firstItem.versionString)")
-            print("- Display version: \(firstItem.displayVersionString)")
-            print("- Download URL: \(firstItem.fileURL)")
-            print("- File size: \(firstItem.contentLength)")
+            logger.debug("📝 Update details:")
+            logger.debug("- Version: \(firstItem.versionString)")
+            logger.debug("- Display version: \(firstItem.displayVersionString)")
+            logger.debug("- Download URL: \(firstItem.fileURL?.absoluteString ?? "nil", privacy: .public)")
+            logger.debug("- File size: \(firstItem.contentLength)")
             
             // Print all available properties for debugging
-            print("🔍 All properties:")
+            logger.debug("🔍 All properties:")
             firstItem.propertiesDictionary.forEach { key, value in
-                print("  \(key): \(value)")
+                logger.debug("  \(String(describing: key), privacy: .public): \(String(describing: value), privacy: .public)")
             }
         }
     }
     
-    func updater(_ updater: SPUUpdater, failedToDownloadAppcastFromURL url: URL, error: Error) {
-        print("❌ Failed to download appcast from: \(url)")
-        print("❌ Error: \(error.localizedDescription)")
-        
-        // Try to fetch the appcast directly to check its contents
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
-            if let error = error {
-                print("🌐 Network error: \(error.localizedDescription)")
+    func updater(_ updater: SPUUpdater, failedToDownloadUpdate item: SUAppcastItem, error: Error) {
+        logger.error("❌ Failed to download update for item version \(item.displayVersionString): \(error.localizedDescription)")
+
+        guard let url = item.fileURL else {
+            return
+        }
+
+        // Try to fetch the update URL directly to check its contents
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, networkError in
+            if let networkError = networkError {
+                self?.logger.debug("🌐 Network error: \(networkError.localizedDescription)")
                 return
             }
             
             if let httpResponse = response as? HTTPURLResponse {
-                print("🌐 HTTP Status: \(httpResponse.statusCode)")
+                self?.logger.debug("🌐 HTTP Status: \(httpResponse.statusCode)")
             }
             
             if let data = data, let content = String(data: data, encoding: .utf8) {
-                print("📄 Appcast content:")
-                print(content)
+                self?.logger.debug("📄 Response preview (update URL): \(content, privacy: .public)")
             }
         }
         task.resume()
     }
 
     private func checkAppcastContent(url: URL) {
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
-            if let error = error {
-                print("❌ Appcast fetch error: \(error.localizedDescription)")
+        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, networkError in
+            if let networkError = networkError {
+                self?.logger.error("❌ Appcast fetch error: \(networkError.localizedDescription)")
                 return
             }
             
             if let httpResponse = response as? HTTPURLResponse {
-                print("📡 Appcast HTTP Status: \(httpResponse.statusCode)")
+                self?.logger.debug("📡 Appcast HTTP Status: \(httpResponse.statusCode)")
             }
             
             if let data = data, let content = String(data: data, encoding: .utf8) {
-                print("📄 Appcast Content:")
-                print(content)
+                self?.logger.debug("📄 Appcast Content: \(content, privacy: .public)")
             }
         }
         task.resume()
@@ -528,12 +535,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
     func updater(_ updater: SPUUpdater, validateUpdate item: SUAppcastItem) throws {
         logToFile("🔍 Validating update: \(item.displayVersionString)")
         let expectedLength = item.contentLength
-        print("🔍 Validating update size: \(expectedLength) bytes")
+        logger.debug("🔍 Validating update size: \(expectedLength) bytes")
         
-        // Verify minimum system requirements
-        if let minSystemVersion = item.minimumSystemVersion {
-            let minVersion = OperatingSystemVersion(majorVersion: 10, minorVersion: 13, patchVersion: 0)
-            if !ProcessInfo().isOperatingSystemAtLeast(minVersion) {
+        // Verify minimum system requirements (Sparkle also enforces this; keep a baseline check)
+        if item.minimumSystemVersion != nil {
+            let baselineMin = OperatingSystemVersion(majorVersion: 10, minorVersion: 13, patchVersion: 0)
+            if !ProcessInfo().isOperatingSystemAtLeast(baselineMin) {
                 throw NSError(domain: "org.sparkle-project.Sparkle", code: 2001, userInfo: [
                     NSLocalizedDescriptionKey: "Update requires macOS 10.13 or later"
                 ])
@@ -549,8 +556,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         
         // Get the actual file size from the download URL
         if let downloadURL = item.fileURL {
-            print("📦 Download URL: \(downloadURL)")
-            print("📊 Expected size: \(expectedLength) bytes")
+            logger.debug("📦 Download URL: \(downloadURL)")
+            logger.debug("📊 Expected size: \(expectedLength) bytes")
         }
     }
 
@@ -565,9 +572,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         logToFile("🔍 Starting update check for version \(currentVersion)")
         
         // Use the updaterController to check for updates silently
-        DispatchQueue.main.async { [weak self] in
+        DispatchQueue.main.async {
             // Use checkForUpdatesInBackground instead of checkForUpdates
-            // self?.updaterController.updater.checkForUpdatesInBackground()
+            // updaterController.updater.checkForUpdatesInBackground()
         }
     }
 
@@ -588,7 +595,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
         logToFile(errorMessage)
     }
     
-    func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, withRequest request: URLRequest) {
+    func updater(_ updater: SPUUpdater, willDownloadUpdate item: SUAppcastItem, with request: NSMutableURLRequest) {
         let message = """
         📥 Preparing to download update: \(item.displayVersionString)
         🔗 Download URL: \(request.url?.absoluteString ?? "unknown")
@@ -599,21 +606,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate, SPUStand
 
     // Add this new method to handle text overlay notifications
     @objc private func handleShowSelectedTextOverlay(_ notification: Notification) {
-        print("📱 AppDelegate: handleShowSelectedTextOverlay called")
+        logger.debug("📱 AppDelegate: handleShowSelectedTextOverlay called")
         
         guard let userInfo = notification.userInfo,
               let selectedText = userInfo["selectedText"] as? String,
-              let audioManager = userInfo["audioManager"] as? AudioManager else {
-            print("❌ AppDelegate: Missing required userInfo in showSelectedTextOverlay notification")
-            print("   userInfo keys: \(notification.userInfo?.keys.map { $0 as? String } ?? [])")
+              (userInfo["audioManager"] as? AudioManager) != nil else {
+            logger.error("❌ AppDelegate: Missing required userInfo in showSelectedTextOverlay notification")
+            logger.debug("   userInfo keys: \(notification.userInfo?.keys.map { $0 as? String } ?? [])")
             return
         }
         
-        print("📱 AppDelegate: Selected text: \(selectedText.prefix(20))...")
+        logger.debug("📱 AppDelegate: Selected text: \(selectedText.prefix(20))...")
     }
 
     @objc private func handleDismissSelectedTextOverlay(_ notification: Notification) {
-        print("📱 AppDelegate: handleDismissSelectedTextOverlay called")
+        logger.debug("📱 AppDelegate: handleDismissSelectedTextOverlay called")
         
         // First detach the child window relationship
         textOverlayController?.detachFromHUD()

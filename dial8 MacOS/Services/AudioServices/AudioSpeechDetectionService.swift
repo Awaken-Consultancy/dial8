@@ -1,8 +1,10 @@
 import Foundation
 import AVFoundation
 import Combine
+import os
 
 class AudioSpeechDetectionService: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioSpeechDetectionService")
     @Published private(set) var isSpeechDetected = false
     @Published private(set) var lastSpeechDetectedTime: Date?
     @Published private(set) var isProcessingSpeech = false
@@ -31,11 +33,11 @@ class AudioSpeechDetectionService: ObservableObject {
             let now = Date()
             let detectionId = String(Int.random(in: 1000...9999))
             
-            print("🗣️ [ID:\(detectionId)] Speech detected at \(DateFormatter.localizedString(from: now, dateStyle: .none, timeStyle: .medium))")
+            logger.debug("🗣️ [ID:\(detectionId)] Speech detected at \(DateFormatter.localizedString(from: now, dateStyle: .none, timeStyle: .medium))")
             
             let bufferTime = -3.0
             self.lastSpeechDetectedTime = now.addingTimeInterval(bufferTime)
-            print("📊 [ID:\(detectionId)] Updated speech detection timestamp with \(abs(bufferTime))s buffer")
+            logger.debug("📊 [ID:\(detectionId)] Updated speech detection timestamp with \(abs(bufferTime))s buffer")
             
             self.isProcessingSpeech = true
             DispatchQueue.main.async {
@@ -46,7 +48,7 @@ class AudioSpeechDetectionService: ObservableObject {
         
         speechRecognizer.onSilenceDetected = { [weak self] in
             guard let self = self else { return }
-            print("🤫 Silence detected")
+            logger.debug("🤫 Silence detected")
             DispatchQueue.main.async {
                 self.isSpeechDetected = false
             }
@@ -65,7 +67,7 @@ class AudioSpeechDetectionService: ObservableObject {
             self.isSpeechDetected = false
         }
         
-        print("🎤 Starting speech detection")
+        logger.debug("🎤 Starting speech detection")
         speechRecognizer.startListening(with: engine)
     }
     
@@ -74,7 +76,7 @@ class AudioSpeechDetectionService: ObservableObject {
     }
     
     func stopSpeechDetection() {
-        print("🛑 Stopping speech detection")
+        logger.debug("🛑 Stopping speech detection")
         speechRecognizer.stopListening()
         
         self.lastSpeechDetectedTime = nil

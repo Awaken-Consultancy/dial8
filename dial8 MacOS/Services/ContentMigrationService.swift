@@ -1,8 +1,10 @@
 import Foundation
+import os
 
 /// Service to migrate from old Media/recordings structure to new Content structure
 @MainActor
 class ContentMigrationService {
+    private let logger = Logger(subsystem: "com.dial8", category: "ContentMigrationService")
     static let shared = ContentMigrationService()
     
     private init() {}
@@ -30,7 +32,7 @@ class ContentMigrationService {
         let oldMediaPath = appSupportURL.appendingPathComponent("Dial8/Media")
         let newContentPath = appSupportURL.appendingPathComponent("Dial8/Content")
         
-        print("📦 Starting content migration from Media to Content...")
+        logger.debug("📦 Starting content migration from Media to Content...")
         
         // Create the new Content directory
         try FileManager.default.createDirectory(at: newContentPath, withIntermediateDirectories: true)
@@ -46,7 +48,7 @@ class ContentMigrationService {
         
         for meetingNoteDir in meetingNoteDirs {
             let meetingNoteId = meetingNoteDir.lastPathComponent
-            print("📁 Migrating meeting note: \(meetingNoteId)")
+            logger.debug("📁 Migrating meeting note: \(meetingNoteId)")
             
             // Create new meeting note directory
             let newMeetingNoteDir = newContentPath.appendingPathComponent(meetingNoteId)
@@ -75,7 +77,7 @@ class ContentMigrationService {
                         
                         let newItemPath = newMeetingNoteDir.appendingPathComponent(itemName)
                         
-                        print("  📋 Moving \(itemName)")
+                        logger.debug("  📋 Moving \(itemName)")
                         try FileManager.default.moveItem(at: item, to: newItemPath)
                     }
                 }
@@ -95,7 +97,7 @@ class ContentMigrationService {
                 if itemName != "recordings" {
                     let newItemPath = newMeetingNoteDir.appendingPathComponent(itemName)
                     
-                    print("  📋 Moving \(itemName)")
+                    logger.debug("  📋 Moving \(itemName)")
                     try FileManager.default.moveItem(at: item, to: newItemPath)
                 }
             }
@@ -104,7 +106,7 @@ class ContentMigrationService {
         // Remove the old Media directory after successful migration
         try FileManager.default.removeItem(at: oldMediaPath)
         
-        print("✅ Content migration completed successfully!")
+        logger.debug("✅ Content migration completed successfully!")
     }
     
     /// Perform migration if needed
@@ -113,7 +115,7 @@ class ContentMigrationService {
             do {
                 try await performMigration()
             } catch {
-                print("❌ Content migration failed: \(error)")
+                logger.error("❌ Content migration failed: \(error)")
             }
         }
     }

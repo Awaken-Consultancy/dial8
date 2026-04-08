@@ -12,6 +12,9 @@
  */
 
 import SwiftUI
+import os
+private let logger = Logger(subsystem: "com.dial8", category: "SelectedTextView")
+
 
 struct SelectedTextView: View {
     let text: String
@@ -56,7 +59,7 @@ struct SelectedTextView: View {
             .padding(.horizontal, 8)
         }
         .onAppear {
-            print("📝 SelectedTextView: View appeared with text: \(text.prefix(20))...")
+            logger.debug("📝 SelectedTextView: View appeared with text: \(text.prefix(20))...")
         }
     }
 }
@@ -76,16 +79,14 @@ struct HUDButtonStyle: ButtonStyle {
     }
 }
 
-#Preview {
-    Group {
-        SelectedTextView(text: "This is an example of selected text that would appear in the overlay. The text can be longer and will scroll if needed.")
-            .frame(width: HUDLayout.SelectedTextOverlay.width, height: 180)
-            .preferredColorScheme(.dark)
-            .previewDisplayName("Dark Mode")
-            
-        SelectedTextView(text: "This is an example of selected text that would appear in the overlay. The text can be longer and will scroll if needed.")
-            .frame(width: HUDLayout.SelectedTextOverlay.width, height: 180)
-            .preferredColorScheme(.light)
-            .previewDisplayName("Light Mode")
-    }
+#Preview("Dark Mode") {
+    SelectedTextView(text: "This is an example of selected text that would appear in the overlay. The text can be longer and will scroll if needed.")
+        .frame(width: HUDLayout.SelectedTextOverlay.width, height: 180)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light Mode") {
+    SelectedTextView(text: "This is an example of selected text that would appear in the overlay. The text can be longer and will scroll if needed.")
+        .frame(width: HUDLayout.SelectedTextOverlay.width, height: 180)
+        .preferredColorScheme(.light)
 } 

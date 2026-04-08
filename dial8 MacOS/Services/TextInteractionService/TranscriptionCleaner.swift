@@ -1,9 +1,11 @@
 import Foundation
+import os
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
 
 class TranscriptionCleaner {
+    private let logger = Logger(subsystem: "com.dial8", category: "TranscriptionCleaner")
     static let shared = TranscriptionCleaner()
 
     #if canImport(FoundationModels)
@@ -170,7 +172,7 @@ class TranscriptionCleaner {
             // Ensure we don't return empty text
             return cleanedText.isEmpty ? trimmedText : cleanedText
         } catch {
-            print("⚠️ TranscriptionCleaner: Failed to clean text - \(error.localizedDescription)")
+            logger.warning("⚠️ TranscriptionCleaner: Failed to clean text - \(error.localizedDescription)")
             // Return original text if cleaning fails
             return trimmedText
         }

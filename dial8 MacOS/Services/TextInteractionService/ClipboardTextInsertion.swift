@@ -1,8 +1,11 @@
 import Foundation
 import AppKit
+import os
 
 /// Responsible for inserting text via clipboard operations
 class ClipboardTextInsertion {
+    
+    private let logger = Logger(subsystem: "com.dial8", category: "ClipboardTextInsertion")
     
     // Original clipboard content to restore after operations
     private var originalClipboardContent: NSString?
@@ -15,11 +18,11 @@ class ClipboardTextInsertion {
         if let currentContent = NSPasteboard.general.pasteboardItems?.first?.data(forType: .string) {
             originalClipboardContent = NSString(data: currentContent, encoding: String.Encoding.utf8.rawValue)
             hasStoredClipboard = true
-            print("📋 Saved original clipboard content")
+            logger.debug("Saved original clipboard content")
         } else {
             originalClipboardContent = nil
             hasStoredClipboard = false
-            print("📋 No clipboard content to save")
+            logger.debug("No clipboard content to save")
         }
     }
     
@@ -29,9 +32,9 @@ class ClipboardTextInsertion {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(originalContent as String, forType: .string)
-            print("📋 Restored original clipboard content")
+            logger.debug("Restored original clipboard content")
         } else {
-            print("📋 No clipboard content to restore")
+            logger.debug("No clipboard content to restore")
         }
         
         // Reset our tracking state
@@ -45,7 +48,7 @@ class ClipboardTextInsertion {
     ///   - preserveClipboard: Whether to preserve the clipboard content
     /// - Returns: Whether the insertion was successful
     func insertText(_ text: String, preserveClipboard: Bool = true) -> Bool {
-        print("📋 Inserting text via clipboard: \"\(text)\"")
+        logger.debug("Inserting text via clipboard: \"\(text, privacy: .public)\"")
         
         // Save original clipboard content if needed
         if preserveClipboard {
@@ -78,12 +81,12 @@ class ClipboardTextInsertion {
         let cmdKey = CGEventFlags.maskCommand
         
         guard let cmdDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: true) else {
-            print("⚠️ Failed to create key down event")
+            logger.error("Failed to create key down event")
             return false
         }
         
         guard let cmdUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x09, keyDown: false) else {
-            print("⚠️ Failed to create key up event")
+            logger.error("Failed to create key up event")
             return false
         }
         
@@ -95,7 +98,7 @@ class ClipboardTextInsertion {
         cmdDown.post(tap: .cgAnnotatedSessionEventTap)
         cmdUp.post(tap: .cgAnnotatedSessionEventTap)
         
-        print("📋 Simulated CMD+V paste action")
+        logger.debug("Simulated CMD+V paste action")
         return true
     }
     
@@ -105,7 +108,7 @@ class ClipboardTextInsertion {
     ///   - preserveClipboard: Whether to preserve the clipboard content
     /// - Returns: Whether the update was successful
     func updateEntireText(_ text: String, preserveClipboard: Bool = true) -> Bool {
-        print("📋 Updating entire text via clipboard: \"\(text)\"")
+        logger.debug("Updating entire text via clipboard: \"\(text, privacy: .public)\"")
         
         // Save original clipboard content if needed
         if preserveClipboard {
@@ -120,7 +123,7 @@ class ClipboardTextInsertion {
         // Simulate CMD+A to select all
         let selectResult = simulateSelectAll()
         if !selectResult {
-            print("⚠️ Failed to select all text")
+            logger.warning("Failed to select all text")
             if preserveClipboard {
                 restoreClipboardContent()
             }
@@ -148,12 +151,12 @@ class ClipboardTextInsertion {
         let cmdKey = CGEventFlags.maskCommand
         
         guard let cmdDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x00, keyDown: true) else {
-            print("⚠️ Failed to create key down event")
+            logger.error("Failed to create key down event")
             return false
         }
         
         guard let cmdUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x00, keyDown: false) else {
-            print("⚠️ Failed to create key up event")
+            logger.error("Failed to create key up event")
             return false
         }
         
@@ -165,7 +168,7 @@ class ClipboardTextInsertion {
         cmdDown.post(tap: .cgAnnotatedSessionEventTap)
         cmdUp.post(tap: .cgAnnotatedSessionEventTap)
         
-        print("📋 Simulated CMD+A select all action")
+        logger.debug("Simulated CMD+A select all action")
         
         // Small delay to ensure selection completes before we continue
         Thread.sleep(forTimeInterval: 0.1)

@@ -1,20 +1,22 @@
 import Foundation
 import SwiftUI
+import os
 
 class HotkeyManager: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "HotkeyManager")
     static let shared = HotkeyManager()
     
     @Published var hotkeyConfigurations: [HotkeyConfiguration] = [] {
         didSet {
-            print("📊 Configurations updated: \(hotkeyConfigurations.count) items")
+            self.logger.debug("📊 Configurations updated: \(self.hotkeyConfigurations.count) items")
             saveConfigurations()
         }
     }
     
     @Published var triggerMode: TriggerMode = .hybrid {
         didSet {
-            UserDefaults.standard.set(triggerMode.rawValue, forKey: "triggerMode")
-            print("🔄 Trigger mode updated: \(triggerMode.description)")
+            UserDefaults.standard.set(self.triggerMode.rawValue, forKey: "triggerMode")
+            self.logger.debug("🔄 Trigger mode updated: \(self.triggerMode.description)")
         }
     }
     
@@ -22,7 +24,7 @@ class HotkeyManager: ObservableObject {
     @Published var currentLearningConfig: HotkeyConfiguration?
     
     init() {
-        print("🚀 Initializing HotkeyManager")
+        logger.debug("🚀 Initializing HotkeyManager")
         loadSavedConfigurations()
     }
     
@@ -38,8 +40,8 @@ class HotkeyManager: ObservableObject {
         let savedConfigVersion = UserDefaults.standard.integer(forKey: "hotkeyConfigurationsVersion")
         
         if savedConfigVersion < currentConfigVersion {
-            print("📢 Hotkey configuration version mismatch. Forcing reset to new defaults.")
-            print("Previous version: \(savedConfigVersion), Current version: \(currentConfigVersion)")
+            logger.debug("📢 Hotkey configuration version mismatch. Forcing reset to new defaults.")
+            logger.debug("Previous version: \(savedConfigVersion), Current version: \(currentConfigVersion)")
             resetToDefaults()
             UserDefaults.standard.set(currentConfigVersion, forKey: "hotkeyConfigurationsVersion")
             return
@@ -50,7 +52,7 @@ class HotkeyManager: ObservableObject {
             // Migrate old configurations if needed
             let migratedConfigs = migrateConfigurations(configs)
             self.hotkeyConfigurations = migratedConfigs
-            print("📥 Loaded \(migratedConfigs.count) configurations")
+            logger.debug("📥 Loaded \(migratedConfigs.count) configurations")
         } else {
             // If no saved configurations, set up defaults
             resetToDefaults()
@@ -61,7 +63,7 @@ class HotkeyManager: ObservableObject {
     private func migrateConfigurations(_ configs: [HotkeyConfiguration]) -> [HotkeyConfiguration] {
         // Check if we have the old single transcribe action
         if configs.count == 1 && configs[0].action == .transcribe {
-            print("🔄 Migrating from old single transcribe hotkey to push-to-talk system")
+            logger.debug("🔄 Migrating from old single transcribe hotkey to push-to-talk system")
             return createDefaultConfigurations()
         }
         
@@ -75,19 +77,19 @@ class HotkeyManager: ObservableObject {
         }
         
         // Otherwise reset to defaults
-        print("🔄 No push-to-talk configuration found, resetting to defaults")
+        logger.debug("🔄 No push-to-talk configuration found, resetting to defaults")
         return createDefaultConfigurations()
     }
     
     func startLearning(for configuration: HotkeyConfiguration) {
-        // print("🎯 Starting to learn hotkey for action: \(configuration.action)")
+        // logger.debug("🎯 Starting to learn hotkey for action: \(configuration.action)")
         currentLearningConfig = configuration
         isRecordingHotkey = true
     }
     
     func recordNewKeyCombo(_ keyCombo: KeyCombo) {
         guard let learningConfig = currentLearningConfig else {
-            print("⚠️ No configuration is currently in learning mode")
+            logger.warning("⚠️ No configuration is currently in learning mode")
             return
         }
         
@@ -112,7 +114,7 @@ class HotkeyManager: ObservableObject {
             finalKeyCombo = keyCombo
         }
         
-        print("✍️ Recording final combo: \(finalKeyCombo.description) for action: \(learningConfig.action)")
+        logger.debug("✍️ Recording final combo: \(finalKeyCombo.description) for action: \(String(describing: learningConfig.action))")
         
         // Check for conflicts
         let hasConflict = hotkeyConfigurations.contains { config in
@@ -120,7 +122,7 @@ class HotkeyManager: ObservableObject {
         }
         
         if hasConflict {
-            print("⚠️ KeyCombo conflicts with existing configuration")
+            logger.warning("⚠️ KeyCombo conflicts with existing configuration")
             return
         }
         
@@ -129,14 +131,14 @@ class HotkeyManager: ObservableObject {
             var updatedConfig = hotkeyConfigurations[index]
             updatedConfig.keyCombo = finalKeyCombo
             hotkeyConfigurations[index] = updatedConfig
-            print("✅ Updated configuration with new keyCombo")
+            logger.debug("✅ Updated configuration with new keyCombo")
         }
         
         stopLearning()
     }
     
     func stopLearning() {
-        print("🛑 Stopping hotkey learning")
+        logger.debug("🛑 Stopping hotkey learning")
         isRecordingHotkey = false
         currentLearningConfig = nil
     }
@@ -148,9 +150,9 @@ class HotkeyManager: ObservableObject {
     }
     
     func resetToDefaults() {
-        print("🔄 Resetting to defaults")
+        logger.debug("🔄 Resetting to defaults")
         hotkeyConfigurations = createDefaultConfigurations()
-        print("✅ Reset to defaults with \(hotkeyConfigurations.count) configurations")
+        logger.debug("✅ Reset to defaults with \(self.hotkeyConfigurations.count) configurations")
     }
     
     private func createDefaultConfigurations() -> [HotkeyConfiguration] {
@@ -171,7 +173,7 @@ class HotkeyManager: ObservableObject {
     private func saveConfigurations() {
         if let encoded = try? JSONEncoder().encode(hotkeyConfigurations) {
             UserDefaults.standard.set(encoded, forKey: "hotkeyConfigurations")
-            print("💾 Configurations saved")
+            logger.debug("💾 Configurations saved")
         }
     }
     
@@ -249,7 +251,7 @@ class HotkeyManager: ObservableObject {
             updatedConfig.isEnabled = true
 
             hotkeyConfigurations[index] = updatedConfig
-            print("🔄 Toggled hotkey enabled state: \(updatedConfig.isEnabled)")
+            logger.debug("🔄 Toggled hotkey enabled state: \(updatedConfig.isEnabled)")
         }
     }
 
@@ -258,7 +260,7 @@ class HotkeyManager: ObservableObject {
             var updatedConfig = hotkeyConfigurations[index]
             updatedConfig.keyCombo.optionKeyPreference = preference
             hotkeyConfigurations[index] = updatedConfig
-            print("🔄 Updated option key preference to: \(preference.description)")
+            logger.debug("🔄 Updated option key preference to: \(preference.description)")
         }
     }
 }

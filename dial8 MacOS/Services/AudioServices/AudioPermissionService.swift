@@ -1,12 +1,14 @@
 import Foundation
 import AVFoundation
 import Combine
+import os
 
 #if os(macOS)
 import AppKit
 #endif
 
 class AudioPermissionService: ObservableObject {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioPermissionService")
     // Published properties for permission states
     @Published var microphonePermissionGranted: Bool = false
     @Published var accessibilityPermissionGranted: Bool = false
@@ -53,9 +55,10 @@ class AudioPermissionService: ObservableObject {
     // MARK: - Permission Requesting
     
     func requestMicrophonePermission(completion: @escaping (Bool) -> Void = { _ in }) {
-        PermissionManager.shared.requestMicrophonePermission { granted in
-            print("Microphone permission granted: \(granted)")
-            DispatchQueue.main.async {
+        PermissionManager.shared.requestMicrophonePermission { [weak self] granted in
+            self?.logger.debug("Microphone permission granted: \(granted)")
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 self.microphonePermissionGranted = granted
                 completion(granted)
             }

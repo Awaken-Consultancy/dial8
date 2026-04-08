@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import os
 
 // Custom panel class that overrides the key window behavior
 class NonActivatingPanel: NSPanel {
@@ -22,6 +23,8 @@ class NonActivatingPanel: NSPanel {
 }
 
 class SelectedTextOverlayController: NSWindowController {
+    private let logger = Logger(subsystem: "com.dial8", category: "SelectedTextOverlayController")
+
     // Use SelectedTextOverlay layout constants
     private let overlayWidth: CGFloat = HUDLayout.SelectedTextOverlay.width
     private let overlayHeight: CGFloat = 180  // This is still custom as it needs to be taller than the HUD
@@ -38,7 +41,7 @@ class SelectedTextOverlayController: NSWindowController {
         let panel = NonActivatingPanel()
         super.init(window: panel)
         
-        print("🔍 SelectedTextOverlayController: Creating window with text: \(selectedText.prefix(20))...")
+        logger.debug("🔍 SelectedTextOverlayController: Creating window with text: \(selectedText.prefix(20))...")
         
         // Configure window to match HUD styling and ensure non-activation
         panel.styleMask = [.nonactivatingPanel, .borderless]
@@ -84,7 +87,7 @@ class SelectedTextOverlayController: NSWindowController {
         // Set up child window relationship
         hudWindow.addChildWindow(overlayWindow, ordered: .above)
         
-        print("🔍 SelectedTextOverlayController: Attached to HUD window as child")
+        logger.debug("🔍 SelectedTextOverlayController: Attached to HUD window as child")
     }
     
     func detachFromHUD() {
@@ -93,12 +96,12 @@ class SelectedTextOverlayController: NSWindowController {
         
         // Remove child window relationship
         hudWindow.removeChildWindow(overlayWindow)
-        print("🔍 SelectedTextOverlayController: Detached from HUD window")
+        logger.debug("🔍 SelectedTextOverlayController: Detached from HUD window")
     }
     
     func showAboveHUD(hudFrame: NSRect) {
         guard let window = self.window else { 
-            print("❌ SelectedTextOverlayController: No window to show")
+            logger.error("❌ SelectedTextOverlayController: No window to show")
             return 
         }
         
@@ -109,10 +112,10 @@ class SelectedTextOverlayController: NSWindowController {
         
         // Check if the position is on screen
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect.zero
-        print("🔍 SelectedTextOverlayController: Screen frame: \(screenFrame)")
+        logger.debug("🔍 SelectedTextOverlayController: Screen frame: \(String(describing: screenFrame))")
         
         let windowFrame = NSRect(x: xPos, y: yPos, width: overlayWidth, height: overlayHeight)
-        print("🔍 SelectedTextOverlayController: Setting window frame to: \(windowFrame)")
+        logger.debug("🔍 SelectedTextOverlayController: Setting window frame to: \(String(describing: windowFrame))")
         
         window.setFrame(windowFrame, display: true)
         
@@ -135,19 +138,19 @@ class SelectedTextOverlayController: NSWindowController {
             context.duration = 0.25
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             window.animator().alphaValue = 1.0
-        }, completionHandler: {
-            print("🔍 SelectedTextOverlayController: Animation completed, alpha now: \(window.alphaValue)")
+        }, completionHandler: { [weak self] in
+            self?.logger.debug("🔍 SelectedTextOverlayController: Animation completed, alpha now: \(window.alphaValue)")
         })
     }
     
     func hideAnimated() {
         guard let window = self.window, !isAnimating else { 
-            print("❌ SelectedTextOverlayController: No window to hide or already animating")
+            logger.error("❌ SelectedTextOverlayController: No window to hide or already animating")
             return 
         }
         
         isAnimating = true
-        print("🔍 SelectedTextOverlayController: Hiding window with animation")
+        logger.debug("🔍 SelectedTextOverlayController: Hiding window with animation")
         
         // Detach from HUD window first
         detachFromHUD()
@@ -159,7 +162,7 @@ class SelectedTextOverlayController: NSWindowController {
         }, completionHandler: { [weak self] in
             window.orderOut(nil)
             self?.isAnimating = false
-            print("🔍 SelectedTextOverlayController: Window hidden")
+            self?.logger.debug("🔍 SelectedTextOverlayController: Window hidden")
         })
     }
 } 

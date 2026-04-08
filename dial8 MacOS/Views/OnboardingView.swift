@@ -45,6 +45,9 @@ import SwiftUI
 import AuthenticationServices
 import AVFoundation
 import ApplicationServices
+import os
+private let logger = Logger(subsystem: "com.dial8", category: "OnboardingView")
+
 
 struct OnboardingView: View {
     @StateObject var whisperManager = WhisperManager.shared
@@ -67,7 +70,7 @@ struct OnboardingView: View {
     @State private var accessibilityPermissionGranted = false
     @State private var showAccessibilityPrompt = false {
         didSet {
-            print("⌨️ ONBOARDING: showAccessibilityPrompt changed to: \(showAccessibilityPrompt)")
+            logger.debug("⌨️ ONBOARDING: showAccessibilityPrompt changed to: \(showAccessibilityPrompt)")
         }
     }
     @State private var navigatingToSettingsForAccessibility = false
@@ -240,7 +243,7 @@ struct OnboardingView: View {
                 // If onboarding is completed, do nothing
             }
             .onReceive(NotificationCenter.default.publisher(for: didBecomeActiveNotification)) { _ in
-                print("⌨️ ONBOARDING: Received didBecomeActive notification")
+                logger.debug("⌨️ ONBOARDING: Received didBecomeActive notification")
                 onAppDidBecomeActive()
             }
             .alert(isPresented: $showAlert) {
@@ -250,7 +253,13 @@ struct OnboardingView: View {
                         title: Text("Microphone Permission"),
                         message: Text("Did you grant microphone permission in System Settings?"),
                         primaryButton: .default(Text("Yes")) {
-                            self.microphonePermissionGranted = true
+                            let permissionGranted = PermissionManager.shared.checkMicrophonePermissionSync()
+                            self.microphonePermissionGranted = permissionGranted
+                            if !permissionGranted {
+                                self.alertMessage = "Microphone permission was not detected. Please try again."
+                                self.activeAlert = .error
+                                self.showAlert = true
+                            }
                         },
                         secondaryButton: .cancel(Text("No"))
                     )
@@ -259,15 +268,15 @@ struct OnboardingView: View {
                         title: Text("Accessibility Permission"),
                         message: Text("Did you grant accessibility permission in System Settings?"),
                         primaryButton: .default(Text("Yes")) {
-                            print("⌨️ ONBOARDING: User clicked Yes on accessibility prompt")
+                            logger.debug("⌨️ ONBOARDING: User clicked Yes on accessibility prompt")
                             let permissionGranted = PermissionManager.shared.checkAccessibilityPermission()
                             self.accessibilityPermissionGranted = permissionGranted
                             if permissionGranted {
-                                print("⌨️ ONBOARDING: Accessibility permission verified")
+                                logger.debug("⌨️ ONBOARDING: Accessibility permission verified")
                                 self.checkPermissions()
                                 self.restartApp()
                             } else {
-                                print("⌨️ ONBOARDING: Accessibility permission not detected")
+                                logger.debug("⌨️ ONBOARDING: Accessibility permission not detected")
                                 self.alertMessage = "Accessibility permission was not detected. Please try again."
                                 self.activeAlert = .error
                                 self.showAlert = true
@@ -724,11 +733,11 @@ struct OnboardingView: View {
         }
         .animation(.easeOut(duration: 0.3), value: fnKeySetupComplete)
         .onAppear {
-            print("⌨️ STEP 6: View appeared, setting up notification observer")
+            logger.debug("⌨️ STEP 6: View appeared, setting up notification observer")
             
             // Start general hotkey detection
             DispatchQueue.main.async {
-                print("⌨️ STEP 6: Starting hotkey detection")
+                logger.debug("⌨️ STEP 6: Starting hotkey detection")
             }
             
             // Create notification observer for hotkey press
@@ -737,11 +746,11 @@ struct OnboardingView: View {
                 object: nil,
                 queue: .main
             ) { notification in
-                print("⌨️ STEP 6: Received hotkey notification: \(notification)")
+                logger.debug("⌨️ STEP 6: Received hotkey notification: \(notification)")
                 withAnimation {
-                    print("⌨️ STEP 6: Setting fnKeySetupComplete to true")
+                    logger.debug("⌨️ STEP 6: Setting fnKeySetupComplete to true")
                     self.fnKeySetupComplete = true
-                    print("⌨️ STEP 6: fnKeySetupComplete is now \(self.fnKeySetupComplete)")
+                    logger.debug("⌨️ STEP 6: fnKeySetupComplete is now \(self.fnKeySetupComplete)")
                 }
             }
             
@@ -751,7 +760,7 @@ struct OnboardingView: View {
             // Ensure this view has focus to detect key presses
             DispatchQueue.main.async {
                 NSApp.activate(ignoringOtherApps: true)
-                print("⌨️ ONBOARDING: Activated app for hotkey detection")
+                logger.debug("⌨️ ONBOARDING: Activated app for hotkey detection")
             }
         }
         .onDisappear {
@@ -763,12 +772,12 @@ struct OnboardingView: View {
             
             // Remove the event monitors if they still exist
             if let monitor = fnKeyEventMonitor {
-                print("⌨️ STEP 6: Cleaning up local event monitor on view disappear")
+                logger.debug("⌨️ STEP 6: Cleaning up local event monitor on view disappear")
                 NSEvent.removeMonitor(monitor)
                 fnKeyEventMonitor = nil
             }
             if let globalMonitor = globalKeyEventMonitor {
-                print("⌨️ STEP 6: Cleaning up global event monitor on view disappear")
+                logger.debug("⌨️ STEP 6: Cleaning up global event monitor on view disappear")
                 NSEvent.removeMonitor(globalMonitor)
                 globalKeyEventMonitor = nil
             }
@@ -777,20 +786,20 @@ struct OnboardingView: View {
 
     // Update the setupHotkeyDetection method with an additional parameter
     private func setupHotkeyDetection(persistOnFirstDetection: Bool = false) {
-        print("⌨️ ONBOARDING: Setting up hotkey detection for verification")
-        print("⌨️ Current hotkey setup state: \(fnKeySetupComplete)")
-        print("⌨️ Current onboarding step: \(currentStep)")
+        logger.debug("⌨️ ONBOARDING: Setting up hotkey detection for verification")
+        logger.debug("⌨️ Current hotkey setup state: \(fnKeySetupComplete)")
+        logger.debug("⌨️ Current onboarding step: \(currentStep)")
         
         // Check if we already have an active monitor
         if fnKeyEventMonitor != nil {
-            print("⌨️ ONBOARDING: Event monitor already exists, removing it first")
+            logger.debug("⌨️ ONBOARDING: Event monitor already exists, removing it first")
             NSEvent.removeMonitor(fnKeyEventMonitor!)
             fnKeyEventMonitor = nil
         }
         
         // Create an event monitor to detect modifier key press during verification
         let eventMask = NSEvent.EventTypeMask.flagsChanged
-        print("⌨️ ONBOARDING: Creating event monitor with mask \(eventMask)")
+        logger.debug("⌨️ ONBOARDING: Creating event monitor with mask \(String(describing: eventMask), privacy: .public)")
         
         // Use both local and global monitors for better detection
         fnKeyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: eventMask) { event in
@@ -803,7 +812,7 @@ struct OnboardingView: View {
             self.handleModifierKeyEvent(event, persistOnFirstDetection: persistOnFirstDetection)
         }
         
-        print("⌨️ ONBOARDING: Fn key event monitor setup complete: \(String(describing: fnKeyEventMonitor))")
+        logger.debug("⌨️ ONBOARDING: Fn key event monitor setup complete: \(String(describing: fnKeyEventMonitor))")
     }
     
     private func handleModifierKeyEvent(_ event: NSEvent, persistOnFirstDetection: Bool) {
@@ -815,29 +824,29 @@ struct OnboardingView: View {
         // Check specifically for Option key
         let isOptionPressed = event.modifierFlags.contains(.option)
         
-        print("⌨️ ONBOARDING: Detected flag change - Option pressed: \(isOptionPressed), Raw flags: \(flagsRaw)")
+        logger.debug("⌨️ ONBOARDING: Detected flag change - Option pressed: \(isOptionPressed), Raw flags: \(flagsRaw)")
         
         if isOptionPressed {
-            print("⌨️ ONBOARDING: Option key detected!")
+            logger.debug("⌨️ ONBOARDING: Option key detected!")
             
             // Post the notification to trigger the animation
             DispatchQueue.main.async {
-                print("⌨️ ONBOARDING: Posting hotkey complete notification")
+                logger.debug("⌨️ ONBOARDING: Posting hotkey complete notification")
                 NotificationCenter.default.post(name: .fnKeySetupComplete, object: nil)
                 
                 // Persist the state
-                print("⌨️ ONBOARDING: Setting UserDefaults for fnKeySetupComplete")
+                logger.debug("⌨️ ONBOARDING: Setting UserDefaults for fnKeySetupComplete")
                 UserDefaults.standard.set(true, forKey: "fnKeySetupComplete")
                 
                 // Remove the monitors after first detection only if not persistent
                 if !persistOnFirstDetection {
                     if let monitor = self.fnKeyEventMonitor {
-                        print("⌨️ ONBOARDING: Removing local event monitor after detection")
+                        logger.debug("⌨️ ONBOARDING: Removing local event monitor after detection")
                         NSEvent.removeMonitor(monitor)
                         self.fnKeyEventMonitor = nil
                     }
                     if let globalMonitor = self.globalKeyEventMonitor {
-                        print("⌨️ ONBOARDING: Removing global event monitor after detection")
+                        logger.debug("⌨️ ONBOARDING: Removing global event monitor after detection")
                         NSEvent.removeMonitor(globalMonitor)
                         self.globalKeyEventMonitor = nil
                     }
@@ -1427,7 +1436,7 @@ struct OnboardingView: View {
 
     /// Checks the current permission statuses
     func checkPermissions() {
-        print("⌨️ ONBOARDING: Checking permissions")
+        logger.debug("⌨️ ONBOARDING: Checking permissions")
         // Check microphone permission synchronously
         PermissionManager.shared.checkMicrophonePermission { granted in
             self.microphonePermissionGranted = granted
@@ -1456,7 +1465,7 @@ struct OnboardingView: View {
 
     /// Requests accessibility permission
     func requestAccessibilityPermission() {
-        print("⌨️ ONBOARDING: Requesting accessibility permission")
+        logger.debug("⌨️ ONBOARDING: Requesting accessibility permission")
         if !accessibilityPermissionGranted {
             // Explicitly reset these states when requesting permission
             hasShownAccessibilityPrompt = false
@@ -1481,10 +1490,10 @@ struct OnboardingView: View {
 
     /// Handles app becoming active
     func onAppDidBecomeActive() {
-        print("⌨️ ONBOARDING: App became active")
-        print("⌨️ ONBOARDING: navigatingToSettingsForMicrophone: \(navigatingToSettingsForMicrophone)")
-        print("⌨️ ONBOARDING: navigatingToSettingsForAccessibility: \(navigatingToSettingsForAccessibility)")
-        print("⌨️ ONBOARDING: hasShownAccessibilityPrompt: \(hasShownAccessibilityPrompt)")
+        logger.debug("⌨️ ONBOARDING: App became active")
+        logger.debug("⌨️ ONBOARDING: navigatingToSettingsForMicrophone: \(navigatingToSettingsForMicrophone)")
+        logger.debug("⌨️ ONBOARDING: navigatingToSettingsForAccessibility: \(navigatingToSettingsForAccessibility)")
+        logger.debug("⌨️ ONBOARDING: hasShownAccessibilityPrompt: \(hasShownAccessibilityPrompt)")
         
         if navigatingToSettingsForMicrophone {
             activeAlert = .microphone
@@ -1496,7 +1505,7 @@ struct OnboardingView: View {
             self.activeAlert = .accessibility
             self.showAlert = true
             self.hasShownAccessibilityPrompt = true
-            print("⌨️ ONBOARDING: Set accessibility alert to show")
+            logger.debug("⌨️ ONBOARDING: Set accessibility alert to show")
         }
     }
 
@@ -1504,7 +1513,7 @@ struct OnboardingView: View {
     func completeOnboarding() {
         // Authentication completion removed
         UserDefaults.standard.hasCompletedOnboarding = true
-        print("Onboarding completed")
+        logger.debug("Onboarding completed")
         // Restart the app to ensure clean state
         restartApp()
     }

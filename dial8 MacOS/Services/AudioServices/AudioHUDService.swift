@@ -1,11 +1,13 @@
 import Foundation
 import SwiftUI
 import Cocoa
+import os
 
 // Add any custom imports required for HUD components
 // The HUDMainController class should be available through the main module imports
 
 class AudioHUDService {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioHUDService")
     // Main controller for the HUD window
     private var notchIndicatorController: HUDMainController?
     
@@ -43,14 +45,14 @@ class AudioHUDService {
                     audioManager: audioManager
                 )
                 self.notchIndicatorController?.showAnimated()
-                print("HUD controller shown")
+                self.logger.debug("HUD controller shown")
             }
         }
     }
     
     /// Hides the recording HUD with proper cleanup
     public func hideHUD() {
-        print("AudioHUDService: hideHUD called")
+        logger.debug("AudioHUDService: hideHUD called")
         
         // Cancel any pending cleanup
         cleanupWorkItem?.cancel()
@@ -68,7 +70,7 @@ class AudioHUDService {
                     controller.hideAnimated()
                     // Don't call close() immediately - let hideAnimated handle it
                     self.notchIndicatorController = nil
-                    print("HUD controller released")
+                    self.logger.debug("HUD controller released")
                 }
                 self.isHUDCleanupInProgress = false
             }

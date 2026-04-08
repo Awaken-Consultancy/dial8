@@ -1,6 +1,8 @@
 import Foundation
+import os
 
 class AudioCleanupService {
+    private let logger = Logger(subsystem: "com.dial8", category: "AudioCleanupService")
     // MARK: - Properties
     
     private var cleanupTimer: DispatchWorkItem?
@@ -21,7 +23,7 @@ class AudioCleanupService {
         // Cancel any existing timer first
         cleanupTimer?.cancel()
         
-        print("Scheduling audio engine cleanup in \(cleanupDelay) seconds")
+        logger.debug("Scheduling audio engine cleanup in \(self.cleanupDelay) seconds")
         
         // Create a new work item for cleanup
         let workItem = DispatchWorkItem { [weak self] in
@@ -47,7 +49,7 @@ class AudioCleanupService {
     /// Performs immediate cleanup of audio resources
     func performFullCleanup() {
         audioEngineService?.stopEngine()
-        print("Audio engine cleaned up after idle period")
+        logger.debug("Audio engine cleaned up after idle period")
     }
     
     // MARK: - Deinitialization

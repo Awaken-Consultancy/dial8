@@ -1,8 +1,11 @@
 import Foundation
 import AppKit
+import os
 
 /// Responsible for directly inserting text into UI controls
 class DirectTextInsertion {
+    
+    private let logger = Logger(subsystem: "com.dial8", category: "DirectTextInsertion")
     
     init() {}
     
@@ -21,12 +24,12 @@ class DirectTextInsertion {
         finalizedText: String,
         onFinalizedTextUpdated: @escaping (String) -> Void
     ) -> Bool {
-        print("🧹 Completely resetting text field due to severe repetition")
+        logger.debug("Completely resetting text field due to severe repetition")
         
         // Create the text to insert - preserve finalized text if it exists
         var textToInsert = finalText
         if !finalizedText.isEmpty {
-            print("🔄 Preserving existing finalized text: \"\(finalizedText)\"")
+            logger.debug("Preserving existing finalized text: \"\(finalizedText, privacy: .public)\"")
             // Check if finalText is already part of finalizedText to avoid duplication
             if !finalizedText.contains(finalText) {
                 textToInsert = finalizedText + (finalizedText.isEmpty ? "" : " ") + finalText
@@ -37,21 +40,21 @@ class DirectTextInsertion {
         
         // Update our finalized text tracking
         onFinalizedTextUpdated(textToInsert)
-        print("🔄 Updated finalized text: \"\(textToInsert)\"")
+        logger.debug("Updated finalized text: \"\(textToInsert, privacy: .public)\"")
         
         // Apply the reset
         if let textField = activeTextField {
-            print("🔄 Resetting text field with: \"\(textToInsert)\"")
+            logger.debug("Resetting text field with: \"\(textToInsert, privacy: .public)\"")
             textField.stringValue = textToInsert
             textField.sendAction(textField.action, to: textField.target)
             return true
         } else if let textView = activeTextView {
-            print("🔄 Resetting text view with: \"\(textToInsert)\"")
+            logger.debug("Resetting text view with: \"\(textToInsert, privacy: .public)\"")
             textView.string = textToInsert
             return true
         } else if let focusedElement = NSWorkspace.shared.frontmostApplication?.focusedUIElement() {
             // Try to use accessibility API
-            print("🔄 Resetting using accessibility API with: \"\(textToInsert)\"")
+            logger.debug("Resetting using accessibility API with: \"\(textToInsert, privacy: .public)\"")
             let result = AXUIElementSetAttributeValue(focusedElement, kAXValueAttribute as CFString, textToInsert as CFTypeRef)
             return result == .success
         }
@@ -151,7 +154,7 @@ class DirectTextInsertion {
                     // Only append the temporary text to the finalized text
                     let space = finalizedText.isEmpty ? "" : " "
                     textField.stringValue = finalizedText + space + text
-                    print("🔄 Preserved finalized text and appended temporary text")
+                    self.logger.debug("Preserved finalized text and appended temporary text")
                 } else {
                     // Normal insertion
                     let space = currentText.isEmpty ? "" : " "
@@ -204,7 +207,7 @@ class DirectTextInsertion {
                         textField.stringValue = newText
                     }
                 }
-                print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+                self.logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
             }
             
             // Notify that the text changed
@@ -249,7 +252,7 @@ class DirectTextInsertion {
                     // Only append the temporary text to the finalized text
                     let insertionPoint = NSRange(location: finalizedText.count + (needsLeadingSpace ? 1 : 0), length: 0)
                     textView.insertText(textToInsert, replacementRange: insertionPoint)
-                    print("🔄 Preserved finalized text and appended temporary text")
+                    self.logger.debug("Preserved finalized text and appended temporary text")
                 } else {
                     // Normal insertion
                     textView.insertText(textToInsert, replacementRange: selectedRange)
@@ -301,7 +304,7 @@ class DirectTextInsertion {
                         textView.insertText(textToInsert, replacementRange: selectedRange)
                     }
                 }
-                print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+                self.logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
             }
         }
     }
@@ -325,16 +328,16 @@ class DirectTextInsertion {
         onFinalizedTextUpdated: @escaping (String) -> Void
     ) {
         let currentText = textField.stringValue
-        print("🔄 Current text from text field: \"\(currentText)\"")
+        logger.debug("Current text from text field: \"\(currentText, privacy: .public)\"")
         
         // First, check if the final text is significantly different from the temporary text
         let textFormatter = TextFormatter()
         let similarity = textFormatter.calculateTextSimilarity(temporaryText, finalText)
-        print("🔄 Text similarity: \(similarity)")
+        logger.debug("Text similarity: \(similarity, privacy: .public)")
         
         // If the texts are very similar (>90%), we might not need to replace at all
         if similarity > 0.9 {
-            print("🔄 Texts are very similar, skipping replacement")
+            logger.debug("Texts are very similar, skipping replacement")
             
             // Update finalized text
             var updatedFinalizedText = finalizedText
@@ -345,7 +348,7 @@ class DirectTextInsertion {
                 updatedFinalizedText += " " + finalText
             }
             onFinalizedTextUpdated(updatedFinalizedText)
-            print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+            logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
             return
         }
         
@@ -355,8 +358,8 @@ class DirectTextInsertion {
             
             // Find the point where the temporary and final texts diverge
             let (commonPrefix, replacementText) = findDivergencePoint(temporaryText, finalText)
-            print("🔄 Common prefix: \"\(commonPrefix)\"")
-            print("🔄 Replacement text: \"\(replacementText)\"")
+            logger.debug("Common prefix: \"\(commonPrefix, privacy: .public)\"")
+            logger.debug("Replacement text: \"\(replacementText, privacy: .public)\"")
             
             if commonPrefix.count > 0 && commonPrefix.count < temporaryText.count {
                 // If we have a common prefix, only replace the divergent part
@@ -372,7 +375,7 @@ class DirectTextInsertion {
             
             // Check if the replacement would cause repetition
             if wouldCauseRepetition(currentText, newText) {
-                print("⚠️ Replacement would cause repetition, using reset approach")
+                logger.warning("Replacement would cause repetition, using reset approach")
                 
                 // Create the text to insert - preserve finalized text if it exists
                 var textToInsert = finalText
@@ -399,11 +402,11 @@ class DirectTextInsertion {
                     }
                 }
                 
-                print("🔄 Setting text field to: \"\(textToInsert)\"")
+                logger.debug("Setting text field to: \"\(textToInsert, privacy: .public)\"")
                 textField.stringValue = textToInsert
             } else {
                 // Apply the replacement
-                print("🔄 Setting text field to: \"\(newText)\"")
+                logger.debug("Setting text field to: \"\(newText, privacy: .public)\"")
                 textField.stringValue = newText
             }
             
@@ -411,7 +414,7 @@ class DirectTextInsertion {
             textField.sendAction(textField.action, to: textField.target)
         } else {
             // If we can't find the temporary text, just append the final text
-            print("⚠️ Couldn't find exact temporary text, appending final text")
+            logger.warning("Couldn't find exact temporary text, appending final text")
             let space = currentText.isEmpty ? "" : " "
             textField.stringValue = currentText + space + finalText
             textField.sendAction(textField.action, to: textField.target)
@@ -426,7 +429,7 @@ class DirectTextInsertion {
             updatedFinalizedText += " " + finalText
         }
         onFinalizedTextUpdated(updatedFinalizedText)
-        print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+        logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
     }
     
     /// Replaces temporary text with final text in a text view
@@ -449,16 +452,16 @@ class DirectTextInsertion {
     ) {
         // For text views, replace the temporary text with the final text
         let currentText = textView.string
-        print("🔄 Current text from text view: \"\(currentText)\"")
+        logger.debug("Current text from text view: \"\(currentText, privacy: .public)\"")
         
         // First, check if the final text is significantly different from the temporary text
         let textFormatter = TextFormatter()
         let similarity = textFormatter.calculateTextSimilarity(temporaryText, finalText)
-        print("🔄 Text similarity: \(similarity)")
+        logger.debug("Text similarity: \(similarity, privacy: .public)")
         
         // If the texts are very similar (>90%), we might not need to replace at all
         if similarity > 0.9 {
-            print("🔄 Texts are very similar, skipping replacement")
+            logger.debug("Texts are very similar, skipping replacement")
             
             // Update finalized text
             var updatedFinalizedText = finalizedText
@@ -469,7 +472,7 @@ class DirectTextInsertion {
                 updatedFinalizedText += " " + finalText
             }
             onFinalizedTextUpdated(updatedFinalizedText)
-            print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+            logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
             return
         }
         
@@ -482,7 +485,7 @@ class DirectTextInsertion {
             // Check if the replacement would cause repetition
             let potentialNewText = currentText.replacingOccurrences(of: temporaryText, with: finalText)
             if wouldCauseRepetition(currentText, potentialNewText) {
-                print("⚠️ Replacement would cause repetition, using reset approach")
+                logger.warning("Replacement would cause repetition, using reset approach")
                 
                 // Create the text to insert - preserve finalized text if it exists
                 var textToInsert = finalText
@@ -509,16 +512,16 @@ class DirectTextInsertion {
                     }
                 }
                 
-                print("🔄 Setting text view to: \"\(textToInsert)\"")
+                logger.debug("Setting text view to: \"\(textToInsert, privacy: .public)\"")
                 textView.string = textToInsert
             } else {
                 // Apply the replacement
-                print("🔄 Replacing characters in text view")
+                logger.debug("Replacing characters in text view")
                 textView.replaceCharacters(in: replaceRange, with: finalText)
             }
         } else {
             // If we can't find the temporary text, just append the final text
-            print("⚠️ Couldn't find exact temporary text, appending final text")
+            logger.warning("Couldn't find exact temporary text, appending final text")
             let space = currentText.isEmpty ? "" : " "
             textView.insertText(space + finalText, replacementRange: NSRange(location: currentText.count, length: 0))
         }
@@ -532,7 +535,7 @@ class DirectTextInsertion {
             updatedFinalizedText += " " + finalText
         }
         onFinalizedTextUpdated(updatedFinalizedText)
-        print("🔄 Updated finalized text: \"\(updatedFinalizedText)\"")
+        logger.debug("Updated finalized text: \"\(updatedFinalizedText, privacy: .public)\"")
     }
     
     /// Simulates a keypress for a specific key code
@@ -546,13 +549,13 @@ class DirectTextInsertion {
         
         // Ensure we have a valid event source
         guard let source = sourceRef else {
-            print("⚠️ Failed to create CGEventSource for keypress")
+            logger.error("Failed to create CGEventSource for keypress")
             return false
         }
         
         // Create key down event
         guard let keyDownEvent = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true) else {
-            print("⚠️ Failed to create key down event for keycode: \(keyCode)")
+            logger.error("Failed to create key down event for keycode: \(keyCode, privacy: .public)")
             return false
         }
         
@@ -563,7 +566,7 @@ class DirectTextInsertion {
         
         // Create key up event
         guard let keyUpEvent = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
-            print("⚠️ Failed to create key up event for keycode: \(keyCode)")
+            logger.error("Failed to create key up event for keycode: \(keyCode, privacy: .public)")
             return false
         }
         

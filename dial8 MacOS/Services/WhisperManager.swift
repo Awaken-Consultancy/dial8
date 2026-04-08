@@ -50,9 +50,9 @@
 /// manager.transcribe(audioURL: url, mode: .transcriptionOnly) { result in
 ///     switch result {
 ///     case .success(let transcription):
-///         print("Transcription: \(transcription)")
+///         // use transcription
 ///     case .failure(let error):
-///         print("Error: \(error)")
+///         // handle error
 ///     }
 /// }
 /// ```
@@ -63,6 +63,131 @@
 import Foundation
 import Combine
 import AppKit  // Add AppKit import for NSWorkspace and NSApplication
+import os
+import CryptoKit
+
+/// Logger safe to use from background queues (avoids MainActor isolation on `WhisperManager`).
+private let whisperProcessLogger = Logger(subsystem: "com.dial8", category: "WhisperManager")
+
+/// File-level hashes so `nonisolated` verification does not touch `@MainActor` storage (Swift 6).
+private enum WhisperModelIntegrityHashes {
+    static let byFileName: [String: String] = [
+        "ggml-small.bin": "PLACEHOLDER_HASH_small_REPLACE_WITH_ACTUAL_SHA256",
+        "ggml-large-v3.bin": "PLACEHOLDER_HASH_largev3_REPLACE_WITH_ACTUAL_SHA256",
+        "ggml-large-v3-turbo.bin": "PLACEHOLDER_HASH_largev3turbo_REPLACE_WITH_ACTUAL_SHA256"
+    ]
+}
+
+/// SRT parsing without touching `@MainActor` (used from background transcription queue).
+private enum WhisperSRTParser {
+    static func parseContent(_ srtContent: String, recordingStartTime _: Date) -> [WhisperTranscriptionSegment] {
+        var segments: [WhisperTranscriptionSegment] = []
+        let lines = srtContent.components(separatedBy: .newlines)
+
+        var currentIndex = 0
+        while currentIndex < lines.count {
+            let line = lines[currentIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if line.isEmpty {
+                currentIndex += 1
+                continue
+            }
+
+            if Int(line) != nil {
+                if currentIndex + 1 < lines.count {
+                    let timestampLine = lines[currentIndex + 1]
+
+                    if let (startTime, endTime) = parseTimestamp(timestampLine) {
+                        var textLines: [String] = []
+                        var textIndex = currentIndex + 2
+
+                        while textIndex < lines.count {
+                            let textLine = lines[textIndex].trimmingCharacters(in: .whitespacesAndNewlines)
+                            if textLine.isEmpty || Int(textLine) != nil {
+                                break
+                            }
+                            textLines.append(textLine)
+                            textIndex += 1
+                        }
+
+                        let fullText = textLines.joined(separator: " ")
+                        let cleanedText = cleanTranscriptionText(fullText)
+
+                        if !cleanedText.isEmpty {
+                            let segment = WhisperTranscriptionSegment(
+                                startTime: startTime,
+                                endTime: endTime,
+                                text: cleanedText
+                            )
+                            segments.append(segment)
+                        }
+
+                        currentIndex = textIndex
+                    } else {
+                        currentIndex += 1
+                    }
+                } else {
+                    currentIndex += 1
+                }
+            } else {
+                currentIndex += 1
+            }
+        }
+
+        return segments
+    }
+
+    private static func parseTimestamp(_ timestampLine: String) -> (TimeInterval, TimeInterval)? {
+        let components = timestampLine.components(separatedBy: " --> ")
+        guard components.count == 2 else { return nil }
+
+        guard let startTime = parseSRTTime(components[0]),
+              let endTime = parseSRTTime(components[1]) else {
+            return nil
+        }
+
+        return (startTime, endTime)
+    }
+
+    private static func parseSRTTime(_ timeString: String) -> TimeInterval? {
+        let cleaned = timeString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = cleaned.components(separatedBy: ",")
+        guard parts.count == 2 else { return nil }
+
+        let timePart = parts[0]
+        guard let milliseconds = Int(parts[1]) else { return nil }
+
+        let timeComponents = timePart.components(separatedBy: ":")
+        guard timeComponents.count == 3,
+              let hours = Int(timeComponents[0]),
+              let minutes = Int(timeComponents[1]),
+              let seconds = Int(timeComponents[2]) else {
+            return nil
+        }
+
+        let totalSeconds = TimeInterval(hours * 3600 + minutes * 60 + seconds)
+        return totalSeconds + TimeInterval(milliseconds) / 1000.0
+    }
+
+    private static func cleanTranscriptionText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\\[.*?\\]|\\(.*?\\)|♪.*?♪", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "♪", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Error thrown when model integrity verification fails
+enum ModelIntegrityError: Error, LocalizedError {
+    case hashMismatch(fileName: String, expected: String, actual: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .hashMismatch(let fileName, let expected, let actual):
+            return "SHA-256 hash mismatch for \(fileName). Expected: \(expected), got: \(actual)"
+        }
+    }
+}
 
 // Move ModelDisplayInfo to WhisperManager since it's model-related metadata
 struct ModelDisplayInfo {
@@ -100,6 +225,8 @@ struct WhisperTranscriptionSegment {
 @MainActor
 class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, SpeechRecognitionEngine {
     static let shared = WhisperManager()
+    
+    private let logger = Logger(subsystem: "com.dial8", category: "WhisperManager")
 
     // MARK: - SpeechRecognitionEngine Protocol Properties
 
@@ -353,81 +480,81 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
     }
 
     private func preloadSelectedModel() {
-        processQueue.async { [weak self] in
-            guard let self = self else { return }
-            self.processLock.lock()
-            defer { self.processLock.unlock() }
+        Task { @MainActor in
+            guard !isPreloading else { return }
+            guard let selectedModel = availableModels.first(where: { $0.id == selectedModelSize }) else { return }
 
-            // Skip if already preloading or if no model is selected
-            guard !self.isPreloading, 
-                  let selectedModel = self.availableModels.first(where: { $0.id == self.selectedModelSize }) else {
-                return
-            }
+            isPreloading = true
 
-            self.isPreloading = true
-
-            let modelPath = self.getModelDirectory().appendingPathComponent(selectedModel.fileName)
+            let modelPath = getModelDirectory().appendingPathComponent(selectedModel.fileName)
             guard FileManager.default.fileExists(atPath: modelPath.path) else {
-                print("Model file does not exist at path: \(modelPath.path)")
-                self.isPreloading = false
+                logger.error("Model file does not exist at path: \(modelPath.path, privacy: .public)")
+                isPreloading = false
                 return
             }
 
-            // Create a temporary process to preload the model
-            guard let whisperURL = self.getWhisperExecutable() else {
-                print("Whisper executable not found")
-                self.isPreloading = false
+            guard let whisperURL = getWhisperExecutable() else {
+                logger.error("Whisper executable not found")
+                isPreloading = false
                 return
             }
 
-            let process = Process()
-            process.executableURL = whisperURL
-            
-            // Set up a temporary file for testing
-            let tempDir = FileManager.default.temporaryDirectory
-            let testFile = tempDir.appendingPathComponent("preload_test.txt")
-            
-            // Write a small test file
-            try? "test".write(to: testFile, atomically: true, encoding: .utf8)
+            let modelFileName = selectedModel.fileName
+            let modelId = selectedModel.id
 
-            // Configure process for preloading
-            process.arguments = [
-                "-m", modelPath.path,
-                "-f", testFile.path,
-                "--no-timestamps",
-                "--language", "auto"
-            ]
+            processQueue.async { [weak self] in
+                guard let self = self else { return }
+                self.processLock.lock()
+                defer { self.processLock.unlock() }
 
-            let outputPipe = Pipe()
-            process.standardOutput = outputPipe
-            process.standardError = outputPipe
+                let process = Process()
+                process.executableURL = whisperURL
 
-            do {
-                try process.run()
-                process.waitUntilExit()
-                
-                // Clean up test file
-                try? FileManager.default.removeItem(at: testFile)
+                let tempDir = FileManager.default.temporaryDirectory
+                let testFile = tempDir.appendingPathComponent("preload_test.txt")
+                try? "test".write(to: testFile, atomically: true, encoding: .utf8)
 
-                if process.terminationStatus == 0 {
-                    print("Model preloaded successfully: \(selectedModel.fileName)")
-                    self.preloadedModel = modelPath
-                    self.preloadedModelSize = selectedModel.id
-                    DispatchQueue.main.async {
-                        self.isReady = true
+                process.arguments = [
+                    "-m", modelPath.path,
+                    "-f", testFile.path,
+                    "--no-timestamps",
+                    "--language", "auto"
+                ]
+
+                let outputPipe = Pipe()
+                process.standardOutput = outputPipe
+                process.standardError = outputPipe
+
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    try? FileManager.default.removeItem(at: testFile)
+
+                    if process.terminationStatus == 0 {
+                        whisperProcessLogger.info("Model preloaded successfully: \(modelFileName, privacy: .public)")
+                        Task { @MainActor in
+                            self.preloadedModel = modelPath
+                            self.preloadedModelSize = modelId
+                            self.isReady = true
+                            self.isPreloading = false
+                        }
+                    } else {
+                        whisperProcessLogger.error("Failed to preload model")
+                        Task { @MainActor in
+                            self.preloadedModel = nil
+                            self.preloadedModelSize = nil
+                            self.isPreloading = false
+                        }
                     }
-                } else {
-                    print("Failed to preload model")
-                    self.preloadedModel = nil
-                    self.preloadedModelSize = nil
+                } catch {
+                    whisperProcessLogger.error("Error preloading model: \(error.localizedDescription, privacy: .public)")
+                    Task { @MainActor in
+                        self.preloadedModel = nil
+                        self.preloadedModelSize = nil
+                        self.isPreloading = false
+                    }
                 }
-            } catch {
-                print("Error preloading model: \(error)")
-                self.preloadedModel = nil
-                self.preloadedModelSize = nil
             }
-
-            self.isPreloading = false
         }
     }
 
@@ -466,7 +593,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
     }
 
     @objc private func handleSleepNotification(_ notification: Notification) {
-        print("💤 System going to sleep - clearing model state")
+        self.logger.info("System going to sleep - clearing model state")
         processLock.lock()
         defer { processLock.unlock() }
         
@@ -476,16 +603,16 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
     }
 
     @objc private func handleWakeNotification(_ notification: Notification) {
-        print("⚡️ System waking up - preloading model")
+        self.logger.info("System waking up - preloading model")
         preloadSelectedModel()
     }
 
     @objc private func handleAppStateChange(_ notification: Notification) {
         if notification.name == NSApplication.willResignActiveNotification {
-            print("📱 App entering background")
+            self.logger.debug("App entering background")
             // No immediate action needed, we'll check state when used
         } else if notification.name == NSApplication.didBecomeActiveNotification {
-            print("📱 App becoming active - verifying model state")
+            self.logger.debug("App becoming active - verifying model state")
             verifyModelState()
         }
     }
@@ -497,7 +624,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
         // Check if we need to reload based on time threshold
         if let lastUse = lastModelUseTime,
            Date().timeIntervalSince(lastUse) > modelReloadThreshold {
-            print("⚠️ Model state expired - reloading")
+            self.logger.warning("Model state expired - reloading")
             preloadedModel = nil
             preloadedModelSize = nil
             preloadSelectedModel()
@@ -521,17 +648,19 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
             preloadSelectedModel()
         }
 
+        guard let modelURL = preloadedModel else {
+            completion(.failure(NSError(domain: "WhisperManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Model not preloaded"])))
+            return
+        }
+        guard let whisperExecURL = getWhisperExecutable() else {
+            completion(.failure(NSError(domain: "WhisperManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "Whisper executable not found"])))
+            return
+        }
+
         processQueue.async { [weak self] in
             guard let self = self else { return }
             self.processLock.lock()
             defer { self.processLock.unlock() }
-
-            guard let modelURL = self.preloadedModel else {
-                DispatchQueue.main.async {
-                    completion(.failure(NSError(domain: "WhisperManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Model not preloaded"])))
-                }
-                return
-            }
 
             // Create a temporary directory for this transcription
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("whisper_\(UUID().uuidString)")
@@ -539,7 +668,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
             let outputFile = tempDir.appendingPathComponent("transcription")
 
             let process = Process()
-            process.executableURL = self.getWhisperExecutable()
+            process.executableURL = whisperExecURL
 
             // Set up pipes for output
             let outputPipe = Pipe()
@@ -585,16 +714,16 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
                 
                 // Check if file exists before trying to read it
                 if !FileManager.default.fileExists(atPath: transcriptionFile.path) {
-                    print("Warning: Transcription file not found at expected path: \(transcriptionFile.path)")
-                    print("Directory contents:")
+                    whisperProcessLogger.warning("Transcription file not found at expected path: \(transcriptionFile.path, privacy: .public)")
+                    whisperProcessLogger.debug("Directory contents:")
                     if let contents = try? FileManager.default.contentsOfDirectory(atPath: tempDir.path) {
-                        print(contents.joined(separator: ", "))
+                        whisperProcessLogger.debug("\(contents.joined(separator: ", "), privacy: .public)")
                     }
                     
                     // Try to read from process output instead
                     let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                     if let output = String(data: outputData, encoding: .utf8), !output.isEmpty {
-                        print("Using process output for transcription instead")
+                        whisperProcessLogger.debug("Using process output for transcription instead")
                         throw NSError(domain: "WhisperManager", code: 404, 
                                     userInfo: [NSLocalizedDescriptionKey: "Transcription file not found, but process output available: \(output)"])
                     }
@@ -652,17 +781,19 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
             preloadSelectedModel()
         }
 
+        guard let modelURL = preloadedModel else {
+            completion(.failure(NSError(domain: "WhisperManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Model not preloaded"])))
+            return
+        }
+        guard let whisperExecURL = getWhisperExecutable() else {
+            completion(.failure(NSError(domain: "WhisperManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "Whisper executable not found"])))
+            return
+        }
+
         processQueue.async { [weak self] in
             guard let self = self else { return }
             self.processLock.lock()
             defer { self.processLock.unlock() }
-
-            guard let modelURL = self.preloadedModel else {
-                DispatchQueue.main.async {
-                    completion(.failure(NSError(domain: "WhisperManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Model not preloaded"])))
-                }
-                return
-            }
 
             // Create a temporary directory for this transcription
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("whisper_\(UUID().uuidString)")
@@ -670,7 +801,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
             let outputFile = tempDir.appendingPathComponent("transcription")
 
             let process = Process()
-            process.executableURL = self.getWhisperExecutable()
+            process.executableURL = whisperExecURL
 
             // Set up pipes for output
             let outputPipe = Pipe()
@@ -706,10 +837,10 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
                 
                 // Check if file exists before trying to read it
                 if !FileManager.default.fileExists(atPath: srtFile.path) {
-                    print("Warning: SRT file not found at expected path: \(srtFile.path)")
-                    print("Directory contents:")
+                    whisperProcessLogger.warning("SRT file not found at expected path: \(srtFile.path, privacy: .public)")
+                    whisperProcessLogger.debug("Directory contents:")
                     if let contents = try? FileManager.default.contentsOfDirectory(atPath: tempDir.path) {
-                        print(contents.joined(separator: ", "))
+                        whisperProcessLogger.debug("\(contents.joined(separator: ", "), privacy: .public)")
                     }
                     
                     throw NSError(domain: "WhisperManager", code: 404, 
@@ -718,7 +849,7 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
                 
                 // Read and parse the SRT file
                 let srtContent = try String(contentsOf: srtFile, encoding: .utf8)
-                let segments = self.parseSRTContent(srtContent, recordingStartTime: recordingStartTime)
+                let segments = WhisperSRTParser.parseContent(srtContent, recordingStartTime: recordingStartTime)
 
                 // Clean up
                 try? FileManager.default.removeItem(at: tempDir)
@@ -735,115 +866,43 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
             }
         }
     }
-    
-    /// Parse SRT content into WhisperTranscriptionSegment objects
-    private func parseSRTContent(_ srtContent: String, recordingStartTime: Date) -> [WhisperTranscriptionSegment] {
-        var segments: [WhisperTranscriptionSegment] = []
-        let lines = srtContent.components(separatedBy: .newlines)
-        
-        var currentIndex = 0
-        while currentIndex < lines.count {
-            let line = lines[currentIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            // Skip empty lines
-            if line.isEmpty {
-                currentIndex += 1
-                continue
-            }
-            
-            // Look for sequence number (should be a number)
-            if Int(line) != nil {
-                // Next line should be timestamp
-                if currentIndex + 1 < lines.count {
-                    let timestampLine = lines[currentIndex + 1]
-                    
-                    // Parse timestamp line (format: "00:00:01,234 --> 00:00:03,456")
-                    if let (startTime, endTime) = parseTimestamp(timestampLine) {
-                        // Collect text lines until we hit the next sequence number or end
-                        var textLines: [String] = []
-                        var textIndex = currentIndex + 2
-                        
-                        while textIndex < lines.count {
-                            let textLine = lines[textIndex].trimmingCharacters(in: .whitespacesAndNewlines)
-                            if textLine.isEmpty || Int(textLine) != nil {
-                                break
-                            }
-                            textLines.append(textLine)
-                            textIndex += 1
-                        }
-                        
-                        // Create segment with cleaned text
-                        let fullText = textLines.joined(separator: " ")
-                        let cleanedText = cleanTranscriptionText(fullText)
-                        
-                        if !cleanedText.isEmpty {
-                            let segment = WhisperTranscriptionSegment(
-                                startTime: startTime,
-                                endTime: endTime,
-                                text: cleanedText
-                            )
-                            segments.append(segment)
-                        }
-                        
-                        currentIndex = textIndex
-                    } else {
-                        currentIndex += 1
-                    }
-                } else {
-                    currentIndex += 1
-                }
-            } else {
-                currentIndex += 1
-            }
-        }
-        
-        return segments
+
+    // MARK: - Model Integrity Verification
+
+    /// Computes the SHA-256 hash of a file at the given URL
+    private nonisolated func computeSHA256Hash(for fileURL: URL) throws -> String {
+        let fileData = try Data(contentsOf: fileURL)
+        let hash = SHA256.hash(data: fileData)
+        return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
-    
-    /// Parse SRT timestamp line into start and end times (in seconds)
-    private func parseTimestamp(_ timestampLine: String) -> (TimeInterval, TimeInterval)? {
-        // Format: "00:00:01,234 --> 00:00:03,456"
-        let components = timestampLine.components(separatedBy: " --> ")
-        guard components.count == 2 else { return nil }
-        
-        guard let startTime = parseSRTTime(components[0]),
-              let endTime = parseSRTTime(components[1]) else {
-            return nil
+
+    /// Verifies the integrity of a downloaded model file by comparing its SHA-256 hash
+    /// - Parameters:
+    ///   - fileURL: The URL of the downloaded model file
+    ///   - fileName: The name of the model file
+    /// - Throws: `ModelIntegrityError.hashMismatch` if the hash doesn't match the expected value
+    private nonisolated func verifyModelIntegrity(fileURL: URL, fileName: String) throws {
+        guard let expectedHash = WhisperModelIntegrityHashes.byFileName[fileName] else {
+            whisperProcessLogger.warning("No SHA-256 hash registered for model: \(fileName, privacy: .public). Skipping integrity verification.")
+            return
         }
-        
-        return (startTime, endTime)
-    }
-    
-    /// Parse SRT time format into seconds
-    private func parseSRTTime(_ timeString: String) -> TimeInterval? {
-        // Format: "00:00:01,234"
-        let cleaned = timeString.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parts = cleaned.components(separatedBy: ",")
-        guard parts.count == 2 else { return nil }
-        
-        let timePart = parts[0]
-        guard let milliseconds = Int(parts[1]) else { return nil }
-        
-        let timeComponents = timePart.components(separatedBy: ":")
-        guard timeComponents.count == 3,
-              let hours = Int(timeComponents[0]),
-              let minutes = Int(timeComponents[1]),
-              let seconds = Int(timeComponents[2]) else {
-            return nil
+
+        if expectedHash.hasPrefix("PLACEHOLDER_HASH_") {
+            whisperProcessLogger.warning("Placeholder hash detected for \(fileName, privacy: .public). Skipping integrity verification. TODO: Add real SHA-256 hash.")
+            return
         }
-        
-        let totalSeconds = TimeInterval(hours * 3600 + minutes * 60 + seconds)
-        let totalMilliseconds = totalSeconds + TimeInterval(milliseconds) / 1000.0
-        
-        return totalMilliseconds
-    }
-    
-    /// Clean transcription text by removing unwanted patterns
-    private func cleanTranscriptionText(_ text: String) -> String {
-        return text
-            .replacingOccurrences(of: "\\[.*?\\]|\\(.*?\\)|♪.*?♪", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "♪", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let actualHash = try computeSHA256Hash(for: fileURL)
+
+        guard actualHash == expectedHash else {
+            throw ModelIntegrityError.hashMismatch(
+                fileName: fileName,
+                expected: expectedHash,
+                actual: actualHash
+            )
+        }
+
+        whisperProcessLogger.info("Model integrity verified for \(fileName, privacy: .public)")
     }
 
     // MARK: - URLSessionDownloadDelegate Methods
@@ -864,6 +923,9 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
             // Move the file from the temporary location to the destination URL
             try fileManager.moveItem(at: location, to: destinationURL)
 
+            // Verify the integrity of the downloaded model
+            try verifyModelIntegrity(fileURL: destinationURL, fileName: destinationFileName)
+
             DispatchQueue.main.async {
                 self.isDownloading = false
                 self.downloadProgress = 1.0
@@ -876,9 +938,27 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
                 
                 self.loadAvailableModels()  // Update available models
             }
-        } catch {
+        } catch ModelIntegrityError.hashMismatch(let fileName, let expected, let actual) {
+            // Delete the corrupted file
+            let fileManager = FileManager.default
+            let destinationURL = self.getModelDirectory().appendingPathComponent(fileName)
+            try? fileManager.removeItem(at: destinationURL)
+
             DispatchQueue.main.async {
-                self.errorMessage = error.localizedDescription
+                self.errorMessage = "Model integrity check failed for \(fileName). The downloaded file may be corrupted. Please try again."
+                self.isDownloading = false
+                self.downloadProgress = 0.0
+                self.logger.error("SHA-256 hash mismatch for \(fileName, privacy: .public): expected \(expected, privacy: .public) actual \(actual, privacy: .public)")
+            }
+        } catch {
+            // Delete the file if it exists (in case verification failed mid-move)
+            let fileManager = FileManager.default
+            let destinationFileName = self.getFileName(for: downloadTask.originalRequest?.url)
+            let destinationURL = self.getModelDirectory().appendingPathComponent(destinationFileName)
+            try? fileManager.removeItem(at: destinationURL)
+
+            DispatchQueue.main.async {
+                self.errorMessage = "Failed to download model: \(error.localizedDescription)"
                 self.isDownloading = false
             }
         }
@@ -918,9 +998,8 @@ class WhisperManager: NSObject, ObservableObject, URLSessionDownloadDelegate, Sp
         #endif
     }
 
-    private func getWhisperExecutable() -> URL? {
-        // Only support Apple Silicon executable
-        return Bundle.main.url(forResource: "whisper", withExtension: nil)
+    nonisolated private func getWhisperExecutable() -> URL? {
+        Bundle.main.url(forResource: "whisper", withExtension: nil)
     }
 
     func waitUntilReady() async {
