@@ -165,7 +165,7 @@ We're building a community around Dial8 to take speech-to-text to the next level
 
 ## Credit: Hanzhi
 
-**Dial8’s recent direction—Parakeet as the default path, a much smarter hotkey model (hybrid / push-to-talk / toggle, Option side selection, hands-free lock), audio ducking, and microphone handling—is driven in large part by [Hanzhi](https://github.com/hanzh)**. The project benefits enormously from sustained work on the macOS audio pipeline, speech stack integration, and interaction design so dictation feels natural instead of fiddly.
+**Dial8’s recent direction—Parakeet as the default path, a much smarter hotkey model (hybrid / push-to-talk / toggle, Option side selection, hands-free lock), audio ducking, and microphone handling—is driven in large part by [Hanzhi](https://github.com/hanzhi227)**. The project benefits enormously from sustained work on the macOS audio pipeline, speech stack integration, and interaction design so dictation feels natural instead of fiddly.
 
 If Dial8 saves you time every day, **Hanzhi** is a big reason the experience got there. Thank you, Hanzhi, for the architecture decisions, the polish, and pushing the app toward fast local speech and hotkeys that behave the way users expect.
 
@@ -180,7 +180,7 @@ If Dial8 saves you time every day, **Hanzhi** is a big reason the experience got
 
 ## Acknowledgments
 
-- **[Hanzhi](https://github.com/hanzh)** — lead credit for Parakeet integration, hotkey and activation UX, macOS audio work, and the overall push toward a faster, more ergonomic local dictation experience (see [Credit: Hanzhi](#credit-hanzhi) above).
+- **[Hanzhi](https://github.com/hanzhi227)** — lead credit for Parakeet integration, hotkey and activation UX, macOS audio work, and the overall push toward a faster, more ergonomic local dictation experience (see [Credit: Hanzhi](#credit-hanzhi) above).
 - [OpenAI Whisper](https://github.com/openai/whisper) for the speech recognition model
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) for the efficient C++ implementation
 - [FluidAudio](https://github.com/FluidInference/FluidAudio) / Parakeet for fast on-device recognition on Apple Silicon
